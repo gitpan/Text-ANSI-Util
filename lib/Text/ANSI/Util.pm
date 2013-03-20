@@ -21,7 +21,7 @@ our @EXPORT    = qw(
                        ta_wrap
                );
 
-our $VERSION = '0.01'; # VERSION
+our $VERSION = '0.02'; # VERSION
 
 # used to find/strip escape codes from string
 our $re       = qr/
@@ -153,7 +153,7 @@ Text::ANSI::Util - Routines for text containing ANSI escape codes
 
 =head1 VERSION
 
-version 0.01
+version 0.02
 
 =head1 SYNOPSIS
 

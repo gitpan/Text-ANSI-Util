@@ -2,7 +2,7 @@ NAME
     Text::ANSI::Util - Routines for text containing ANSI escape codes
 
 VERSION
-    version 0.01
+    version 0.02
 
 SYNOPSIS
      use Text::ANSI::Util qw(ta_detect ta_length ta_mbswidth ta_mbswidth_height
