@@ -18,13 +18,14 @@ my %module_build_args = (
     "Steven Haryanto <stevenharyanto\@gmail.com>"
   ],
   "dist_name" => "Text-ANSI-Util",
-  "dist_version" => "0.05",
+  "dist_version" => "0.06",
   "license" => "perl",
   "module_name" => "Text::ANSI::Util",
   "recommends" => {},
   "recursive_test_files" => 1,
   "requires" => {
     "Text::CharWidth" => 0,
+    "Text::WideChar::Util" => "0.02",
     "perl" => "5.010001"
   },
   "script_files" => []

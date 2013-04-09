@@ -16,8 +16,9 @@ meta-spec:
 name: Text-ANSI-Util
 requires:
   Text::CharWidth: 0
+  Text::WideChar::Util: 0.02
   perl: 5.010001
 resources:
   homepage: http://metacpan.org/release/Text-ANSI-Util
   repository: http://github.com/sharyanto/perl-Text-ANSI-Util
-version: 0.05
+version: 0.06
