@@ -26,7 +26,7 @@ our @EXPORT_OK = qw(
                        ta_wrap
                );
 
-our $VERSION = '0.04'; # VERSION
+our $VERSION = '0.05'; # VERSION
 
 # used to find/strip escape codes from string
 our $re       = qr/
@@ -181,29 +181,20 @@ sub _ta_pad {
     }
     $padchar //= " ";
 
-    # XXX is this safe? no newline inside ansi code sequence, right?
-    my @in = split /(\r?\n)/, $text;
-    my @out;
-
-    while (my ($line, $nl) = splice @in, 0, 2) {
-        my $w = $is_mb ? _ta_mbswidth0($line) : ta_length($line);
-        if ($is_trunc && $w > $width) {
-            $line = $is_mb ?
-                ta_mbtrunc($line, $width) : ta_trunc($line, $width);
+    my $w = $is_mb ? _ta_mbswidth0($text) : ta_length($text);
+    if ($is_trunc && $w > $width) {
+        $text = $is_mb ? ta_mbtrunc($text, $width) : ta_trunc($text, $width);
+    } else {
+        if ($which eq 'l') {
+            $text = ($padchar x ($width-$w)) . $text;
+        } elsif ($which eq 'c') {
+            my $n = int(($width-$w)/2);
+            $text = ($padchar x $n) . $text . ($padchar x ($width-$w-$n));
         } else {
-            if ($which eq 'l') {
-                $line = ($padchar x ($width-$w)) . $line;
-            } elsif ($which eq 'c') {
-                my $n = int(($width-$w)/2);
-                $line = ($padchar x $n) . $line . ($padchar x ($width-$w-$n));
-            } else {
-                $line .= ($padchar x ($width-$w));
-            }
+            $text .= ($padchar x ($width-$w));
         }
-        push @out, $line;
-        push @out, $nl if defined $nl;
     }
-    join "", @out;
+    $text;
 }
 
 sub ta_pad {
@@ -260,7 +251,7 @@ Text::ANSI::Util - Routines for text containing ANSI escape codes
 
 =head1 VERSION
 
-version 0.04
+version 0.05
 
 =head1 SYNOPSIS
 
@@ -425,6 +416,8 @@ left+right padding to center the text.
 C<$padchar> is whitespace if not specified. It should be string having the width
 of 1 column.
 
+Does *not* handle multiline text; you can split text by C</\r?\n/> yourself.
+
 =head2 ta_mbpad => STR
 
 Like ta_pad() but it uses ta_mbswidth() instead of ta_length(), so it can handle
@@ -435,7 +428,7 @@ wide characters.
 Truncate C<$text> to C<$width> columns while still including all the ANSI escape
 codes. This ensures that truncated text still reset colors, etc.
 
-Does *not* handle multiple lines.
+Does *not* handle multiline text; you can split text by C</\r?\n/> yourself.
 
 =head2 ta_mbtrunc($text, $width) => STR
 

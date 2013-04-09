@@ -2,7 +2,7 @@ NAME
     Text::ANSI::Util - Routines for text containing ANSI escape codes
 
 VERSION
-    version 0.04
+    version 0.05
 
 SYNOPSIS
      use Text::ANSI::Util qw(
@@ -157,6 +157,9 @@ FUNCTIONS
     $padchar is whitespace if not specified. It should be string having the
     width of 1 column.
 
+    Does *not* handle multiline text; you can split text by "/\r?\n/"
+    yourself.
+
   ta_mbpad => STR
     Like ta_pad() but it uses ta_mbswidth() instead of ta_length(), so it
     can handle wide characters.
@@ -165,7 +168,8 @@ FUNCTIONS
     Truncate $text to $width columns while still including all the ANSI
     escape codes. This ensures that truncated text still reset colors, etc.
 
-    Does *not* handle multiple lines.
+    Does *not* handle multiline text; you can split text by "/\r?\n/"
+    yourself.
 
   ta_mbtrunc($text, $width) => STR
     Like ta_trunc() but it uses ta_mbswidth() instead of ta_length(), so it
