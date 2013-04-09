@@ -11,7 +11,7 @@ use Text::CharWidth qw(mbswidth);
 
 require Exporter;
 our @ISA       = qw(Exporter);
-our @EXPORT    = qw(
+our @EXPORT_OK = qw(
                        ta_detect
                        ta_length
                        ta_mbpad
@@ -26,7 +26,7 @@ our @EXPORT    = qw(
                        ta_wrap
                );
 
-our $VERSION = '0.03'; # VERSION
+our $VERSION = '0.04'; # VERSION
 
 # used to find/strip escape codes from string
 our $re       = qr/
@@ -109,13 +109,21 @@ sub _ta_wrap {
     my $i = 0;
     while (my $p = shift(@p)) {
         $i++;
+        my $num_nl = 0;
+        my $is_pb; # paragraph break
         my $is_ws;
         my $w;
-        #say "D:col=$col, p=$p";
+        #say "D:col=$col, p=[$p]";
         if ($p =~ /\A\s/s) {
             $is_ws++;
-            $p = " ";
-            $w = 1;
+            $num_nl++ while $p =~ s/\r?\n//;
+            if ($num_nl >= 2) {
+                $is_pb++;
+                $w = 0;
+            } else {
+                $p = " ";
+                $w = 1;
+            }
         } else {
             if ($is_mb) {
                 $w = _ta_mbswidth0($p);
@@ -124,9 +132,13 @@ sub _ta_wrap {
             }
         }
         $col += $w;
-        #say "D:col=$col";
-        if ($col > $width+1) {
-            # remove whitespace at the end of prev line
+        #say "D:col=$col, is_pb=${\($is_pb//0)}, is_ws=${\($is_ws//0)}, num_nl=$num_nl";
+
+        if ($is_pb) {
+            push @res, "\n" x $num_nl;
+            $col = 0;
+        } elsif ($col > $width+1) {
+            # remove space at the end of prev line
             if (@res && $res[-1] eq ' ') {
                 pop @res;
             }
@@ -139,7 +151,14 @@ sub _ta_wrap {
                 $col = $w;
             }
         } else {
-            push @res, $p if @p;
+            # remove space at the end of text
+            if (@p || !$is_ws) {
+                push @res, $p;
+            } else {
+                if ($num_nl == 1) {
+                    push @res, "\n";
+                }
+            }
         }
     }
     join "", @res;
@@ -241,7 +260,7 @@ Text::ANSI::Util - Routines for text containing ANSI escape codes
 
 =head1 VERSION
 
-version 0.03
+version 0.04
 
 =head1 SYNOPSIS
 
@@ -422,6 +441,13 @@ Does *not* handle multiple lines.
 
 Like ta_trunc() but it uses ta_mbswidth() instead of ta_length(), so it can
 handle wide characters.
+
+=head1 FAQ
+
+=head2 How do I truncate string based on number of characters?
+
+You can simply use Perl's ta_trunc() even on text containing wide characters.
+ta_trunc() uses Perl's length() which works on a per-character basis.
 
 =head1 TODOS
 

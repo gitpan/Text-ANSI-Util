@@ -2,7 +2,7 @@ NAME
     Text::ANSI::Util - Routines for text containing ANSI escape codes
 
 VERSION
-    version 0.03
+    version 0.04
 
 SYNOPSIS
      use Text::ANSI::Util qw(
@@ -170,6 +170,12 @@ FUNCTIONS
   ta_mbtrunc($text, $width) => STR
     Like ta_trunc() but it uses ta_mbswidth() instead of ta_length(), so it
     can handle wide characters.
+
+FAQ
+  How do I truncate string based on number of characters?
+    You can simply use Perl's ta_trunc() even on text containing wide
+    characters. ta_trunc() uses Perl's length() which works on a
+    per-character basis.
 
 TODOS
 SEE ALSO
