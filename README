@@ -2,34 +2,35 @@ NAME
     Text::ANSI::Util - Routines for text containing ANSI escape codes
 
 VERSION
-    version 0.06
+    version 0.07
 
 SYNOPSIS
      use Text::ANSI::Util qw(
-         ta_detect ta_length ta_mbpad ta_mbswidth ta_mbswidth_height ta_mbwrap
-         ta_pad ta_strip ta_wrap);
+         ta_detect ta_highlight ta_highlight_all ta_length ta_mbpad ta_mbswidth
+         ta_mbswidth_height ta_mbwrap ta_pad ta_split_codes ta_split_codes_single
+         ta_strip ta_wrap);
 
      # detect whether text has ANSI escape codes?
      say ta_detect("red");         # => false
-     say ta_detect("\x1b[31mred"); # => true
+     say ta_detect("\e[31mred"); # => true
 
      # calculate length of text (excluding the ANSI escape codes)
      say ta_length("red");         # => 3
-     say ta_length("\x1b[31mred"); # => 3
+     say ta_length("\e[31mred"); # => 3
 
      # calculate visual width of text if printed on terminal (can handle Unicode
      # wide characters and exclude the ANSI escape codes)
-     say ta_mbswidth("\x1b[31mred"); # => 3
-     say ta_mbswidth("\x1b[31m红色"); # => 4
+     say ta_mbswidth("\e[31mred"); # => 3
+     say ta_mbswidth("\e[31m红色"); # => 4
 
      # ditto, but also return the number of lines
-     say ta_mbswidth_height("\x1b[31mred\n红色"); # => [4, 2]
+     say ta_mbswidth_height("\e[31mred\n红色"); # => [4, 2]
 
      # strip ANSI escape codes
-     say ta_strip("\x1b[31mred"); # => "red"
+     say ta_strip("\e[31mred"); # => "red"
 
      # split codes (ANSI codes are always on the even positions)
-     my @parts = ta_split_codes("\x1b[31mred"); # => ("", "\x1b[31m", "red")
+     my @parts = ta_split_codes("\e[31mred"); # => ("", "\e[31m", "red")
 
      # wrap text to a certain column width, handle ANSI escape codes
      say ta_wrap("....", 40);
@@ -52,6 +53,12 @@ SYNOPSIS
 
      # ditto, but handle wide characters
      say ta_mbtrunc(...);
+
+     # highlight the first occurence of some string within text
+     say ta_highlight("some text", "ome", "\x[7m\x[31m");
+
+     # ditto, but highlight all occurrences
+     say ta_highlight_all(...);
 
 DESCRIPTION
     This module provides routines for dealing with text containing ANSI
@@ -125,6 +132,10 @@ FUNCTIONS
          ...
      }
 
+  ta_split_codes_single($text) => LIST
+    Like ta_split_codes() but each ANSI escape code is split separately,
+    instead of grouped together.
+
   ta_wrap($text, $width) => STR
     Wrap $text to $width columns.
 
@@ -174,6 +185,16 @@ FUNCTIONS
   ta_mbtrunc($text, $width) => STR
     Like ta_trunc() but it uses ta_mbswidth() instead of ta_length(), so it
     can handle wide characters.
+
+  ta_highlight($text, $needle, $color, $ci) => STR
+    Highlight the first occurence of $needle in $text with <$color>, taking
+    care not to mess up existing colors.
+
+    $ci can be set to 1 to search case-insensitively.
+
+  ta_highlight_all($text, $needle, $color, $ci) => STR
+    Like ta_highlight(), but highlight all occurences instead of only the
+    first.
 
 FAQ
   How do I truncate string based on number of characters?

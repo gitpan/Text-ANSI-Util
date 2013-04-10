@@ -6,7 +6,7 @@ use strict;
 use utf8;
 use warnings;
 
-use List::Util qw(max);
+use List::Util qw(min max);
 use Text::CharWidth qw(mbswidth);
 use Text::WideChar::Util qw(mbtrunc);
 
@@ -14,6 +14,8 @@ require Exporter;
 our @ISA       = qw(Exporter);
 our @EXPORT_OK = qw(
                        ta_detect
+                       ta_highlight
+                       ta_highlight_all
                        ta_length
                        ta_mbpad
                        ta_mbswidth
@@ -22,25 +24,26 @@ our @EXPORT_OK = qw(
                        ta_mbwrap
                        ta_pad
                        ta_split_codes
+                       ta_split_codes_single
                        ta_strip
                        ta_trunc
                        ta_wrap
                );
 
-our $VERSION = '0.06'; # VERSION
+our $VERSION = '0.07'; # VERSION
 
 # used to find/strip escape codes from string
 our $re       = qr/
-                      #\x1b\[ (?: (\d+) ((?:;[^;]+?)*) )? ([\x40-\x7e])
+                      #\e\[ (?: (\d+) ((?:;[^;]+?)*) )? ([\x40-\x7e])
                       # without captures
-                      \x1b\[ (?: \d+ (?:;[^;]+?)* )? [\x40-\x7e]
+                      \e\[ (?: \d+ (?:;[^;]+?)* )? [\x40-\x7e]
                   /osx;
 
 # used to split into words
 our $re_words = qr/
                       (?:
                           \S+ |
-                          \x1b\[ (?: \d+ (?:;[^;]+?)*)? [\x40-\x7e]
+                          \e\[ (?: \d+ (?:;[^;]+?)*)? [\x40-\x7e]
                       )+
 
                   |
@@ -65,12 +68,13 @@ sub ta_strip {
 }
 
 sub ta_split_codes {
-    my ($text, $mark) = @_;
-    if ($mark) {
-        return map {[$_, $re ? 1:0]} split(/((?:$re)+)/, $text);
-    } else {
-        return split(/((?:$re)+)/, $text);
-    }
+    my $text = shift;
+    return split(/((?:$re)+)/, $text);
+}
+
+sub ta_split_codes_single {
+    my $text = shift;
+    return split(/($re)/, $text);
 }
 
 sub ta_mbswidth_height {
@@ -251,6 +255,123 @@ sub ta_mbtrunc {
     _ta_trunc(1, @_);
 }
 
+sub _ta_highlight {
+    my ($is_all, $text, $needle, $color, $ci) = @_;
+
+    # our technique to not mess up existing color is to save up all ANSI color
+    # codes (m commands) from the last reset/normal (\e[0m). then after we
+    # insert the highlight, we reinsert the saved up codes.
+
+    # break into chunks
+    my @p = ta_split_codes_single($text);
+    my (@t, @c, @sc); # texts, codes, saved codes
+    my $sc = "";
+    my $plaintext = "";
+    while (my ($t, $c) = splice(@p, 0, 2)) {
+        push @t, $t;
+        push @c, $c;
+        push @sc, $sc;
+        $plaintext .= $t;
+        if (defined($c) && $c =~ /m\z/) {
+            if ($c eq "\e[0m") {
+                $sc = "";
+            } else {
+                $sc .= $c;
+            }
+        }
+    }
+    #use Data::Dump; print "\@t: "; dd \@t; print "\@c: "; dd \@c; print "\@sc: "; dd \@sc;
+
+    if ($ci) {
+        $text = lc($text);
+        $needle = lc($needle);
+    }
+    my $npos = index($plaintext, $needle);
+    return $text unless $npos >= 0;
+
+    my @res;
+    my $found = 1;
+    my $pos = 0;
+    my $i = 0;
+  CHUNK:
+    while (1) {
+        last if $i >= @t;
+        my $pos2  = $pos+length($t[$i])-1;
+        my $npos2 = $npos+length($needle)-1;
+        #say "D: npos=$npos, npos2=$npos2, pos=$pos, pos2=$pos2";
+        if ($pos > $npos2 || $pos2 < $npos || !$found) {
+            #say "D:inserting chunk: [$t[$i]]";
+            # no need to highlight
+            push @res, $t[$i];
+            push @res, $c[$i] if defined $c[$i];
+            goto L1;
+        }
+
+        # there is chunk text at the left of needle?
+        if ($pos < $npos) {
+            my $pre = substr($t[$i], 0, $npos-$pos);
+            #say "D:inserting pre=[$pre]";
+            push @res, $pre;
+        }
+
+        my $npart = substr($needle,
+                           max(0, $pos-$npos),
+                           min($pos2, $npos2)-max($pos, $npos)+1);
+        if (length($npart)) {
+            #say "D:inserting npart=[$npart]";
+            push @res, $color, $npart;
+            push @res, "\e[0m";
+            #use Data::Dump; dd [$sc[$i], $c[$i]];
+            push @res, $sc[$i];
+        }
+
+        # there is chunk text at the right of needle?
+        if ($npos2 <= $pos2) {
+            #say "D:We have run past needle";
+            my $post = substr($t[$i], $npos2-$pos+1);
+
+            # ready to find next occurence?
+            if ($is_all) {
+                #say "D:Finding another needle ($needle) from pos ", ($npos2+1);
+                my $new_npos = index($plaintext, $needle, $npos2+1);
+                if ($new_npos >= 0) {
+                    $found++;
+                    $pos   = $npos2+1;
+                    $npos2 = $new_npos + length($needle)-1;
+                    #say "D:Replacing chunk for new needle search: [$post]";
+                    $t[$i] = $post;
+                    $npos = $new_npos;
+                    redo CHUNK;
+                } else {
+                    $found = 0;
+                }
+            } else {
+                $found = 0;
+            }
+
+            if (!$found) {
+                #say "D:inserting post=[$post]";
+                push @res, $post;
+                push @res, $c[$i] if defined $c[$i];
+            }
+        }
+
+      L1:
+        $pos = $pos2+1;
+        $i++;
+    }
+
+    join "", @res;
+}
+
+sub ta_highlight {
+    _ta_highlight(0, @_);
+}
+
+sub ta_highlight_all {
+    _ta_highlight(1, @_);
+}
+
 1;
 # ABSTRACT: Routines for text containing ANSI escape codes
 
@@ -264,35 +385,36 @@ Text::ANSI::Util - Routines for text containing ANSI escape codes
 
 =head1 VERSION
 
-version 0.06
+version 0.07
 
 =head1 SYNOPSIS
 
  use Text::ANSI::Util qw(
-     ta_detect ta_length ta_mbpad ta_mbswidth ta_mbswidth_height ta_mbwrap
-     ta_pad ta_strip ta_wrap);
+     ta_detect ta_highlight ta_highlight_all ta_length ta_mbpad ta_mbswidth
+     ta_mbswidth_height ta_mbwrap ta_pad ta_split_codes ta_split_codes_single
+     ta_strip ta_wrap);
 
  # detect whether text has ANSI escape codes?
  say ta_detect("red");         # => false
- say ta_detect("\x1b[31mred"); # => true
+ say ta_detect("\e[31mred"); # => true
 
  # calculate length of text (excluding the ANSI escape codes)
  say ta_length("red");         # => 3
- say ta_length("\x1b[31mred"); # => 3
+ say ta_length("\e[31mred"); # => 3
 
  # calculate visual width of text if printed on terminal (can handle Unicode
  # wide characters and exclude the ANSI escape codes)
- say ta_mbswidth("\x1b[31mred"); # => 3
- say ta_mbswidth("\x1b[31m红色"); # => 4
+ say ta_mbswidth("\e[31mred"); # => 3
+ say ta_mbswidth("\e[31m红色"); # => 4
 
  # ditto, but also return the number of lines
- say ta_mbswidth_height("\x1b[31mred\n红色"); # => [4, 2]
+ say ta_mbswidth_height("\e[31mred\n红色"); # => [4, 2]
 
  # strip ANSI escape codes
- say ta_strip("\x1b[31mred"); # => "red"
+ say ta_strip("\e[31mred"); # => "red"
 
  # split codes (ANSI codes are always on the even positions)
- my @parts = ta_split_codes("\x1b[31mred"); # => ("", "\x1b[31m", "red")
+ my @parts = ta_split_codes("\e[31mred"); # => ("", "\e[31m", "red")
 
  # wrap text to a certain column width, handle ANSI escape codes
  say ta_wrap("....", 40);
@@ -315,6 +437,12 @@ version 0.06
 
  # ditto, but handle wide characters
  say ta_mbtrunc(...);
+
+ # highlight the first occurence of some string within text
+ say ta_highlight("some text", "ome", "\x[7m\x[31m");
+
+ # ditto, but highlight all occurrences
+ say ta_highlight_all(...);
 
 =head1 DESCRIPTION
 
@@ -397,6 +525,11 @@ so you can do something like:
      ...
  }
 
+=head2 ta_split_codes_single($text) => LIST
+
+Like ta_split_codes() but each ANSI escape code is split separately, instead of
+grouped together.
+
 =head2 ta_wrap($text, $width) => STR
 
 Wrap C<$text> to C<$width> columns.
@@ -447,6 +580,17 @@ Does *not* handle multiline text; you can split text by C</\r?\n/> yourself.
 
 Like ta_trunc() but it uses ta_mbswidth() instead of ta_length(), so it can
 handle wide characters.
+
+=head2 ta_highlight($text, $needle, $color, $ci) => STR
+
+Highlight the first occurence of C<$needle> in C<$text> with <$color>, taking
+care not to mess up existing colors.
+
+C<$ci> can be set to 1 to search case-insensitively.
+
+=head2 ta_highlight_all($text, $needle, $color, $ci) => STR
+
+Like ta_highlight(), but highlight all occurences instead of only the first.
 
 =head1 FAQ
 
