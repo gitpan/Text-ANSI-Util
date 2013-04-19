@@ -8,15 +8,18 @@ use warnings;
 
 use List::Util qw(min max);
 use Text::CharWidth qw(mbswidth);
-use Text::WideChar::Util qw(mbtrunc);
+use Text::WideChar::Util 0.04 qw(mbtrunc);
 
 require Exporter;
 our @ISA       = qw(Exporter);
 our @EXPORT_OK = qw(
+                       ta_add_color_resets
                        ta_detect
+                       ta_extract_codes
                        ta_highlight
                        ta_highlight_all
                        ta_length
+                       ta_length_height
                        ta_mbpad
                        ta_mbswidth
                        ta_mbswidth_height
@@ -30,25 +33,13 @@ our @EXPORT_OK = qw(
                        ta_wrap
                );
 
-our $VERSION = '0.07'; # VERSION
+our $VERSION = '0.08'; # VERSION
 
 # used to find/strip escape codes from string
 our $re       = qr/
                       #\e\[ (?: (\d+) ((?:;[^;]+?)*) )? ([\x40-\x7e])
                       # without captures
                       \e\[ (?: \d+ (?:;[^;]+?)* )? [\x40-\x7e]
-                  /osx;
-
-# used to split into words
-our $re_words = qr/
-                      (?:
-                          \S+ |
-                          \e\[ (?: \d+ (?:;[^;]+?)*)? [\x40-\x7e]
-                      )+
-
-                  |
-
-                      \s+
                   /osx;
 
 sub ta_detect {
@@ -61,24 +52,8 @@ sub ta_length {
     length(ta_strip($text));
 }
 
-sub ta_strip {
-    my $text = shift;
-    $text =~ s/$re//og;
-    $text;
-}
-
-sub ta_split_codes {
-    my $text = shift;
-    return split(/((?:$re)+)/, $text);
-}
-
-sub ta_split_codes_single {
-    my $text = shift;
-    return split(/($re)/, $text);
-}
-
-sub ta_mbswidth_height {
-    my $text = shift;
+sub _ta_length_height {
+    my ($is_mb, $text) = @_;
     my $num_lines = 0;
     my @lens;
     for my $e (split /(\r?\n)/, ta_strip($text)) {
@@ -87,9 +62,40 @@ sub ta_mbswidth_height {
             next;
         }
         $num_lines = 1 if $num_lines == 0;
-        push @lens, mbswidth($e);
+        push @lens, $is_mb ? mbswidth($e) : length($e);
     }
     [max(@lens) // 0, $num_lines];
+}
+
+sub ta_length_height {
+    _ta_length_height(0, @_);
+}
+
+sub ta_mbswidth_height {
+    _ta_length_height(1, @_);
+}
+
+sub ta_strip {
+    my $text = shift;
+    $text =~ s/$re//go;
+    $text;
+}
+
+sub ta_extract_codes {
+    my $text = shift;
+    my $res = "";
+    $res .= $1 while $text =~ /($re)/go;
+    $res;
+}
+
+sub ta_split_codes {
+    my $text = shift;
+    return split(/((?:$re)+)/o, $text);
+}
+
+sub ta_split_codes_single {
+    my $text = shift;
+    return split(/($re)/o, $text);
 }
 
 # same like _ta_mbswidth, but without handling multiline text
@@ -104,68 +110,304 @@ sub ta_mbswidth {
 }
 
 sub _ta_wrap {
-    my ($is_mb, $text, $width) = @_;
+    my ($is_mb, $text, $width, $opts) = @_;
     $width //= 80;
+    $opts  //= {};
 
-    my @res;
-    my @p = $text =~ /($re_words)/g;
-    #use Data::Dump; dd \@p;
-    my $col = 0;
-    my $i = 0;
-    while (my $p = shift(@p)) {
-        $i++;
-        my $num_nl = 0;
-        my $is_pb; # paragraph break
-        my $is_ws;
-        my $w;
-        #say "D:col=$col, p=[$p]";
-        if ($p =~ /\A\s/s) {
-            $is_ws++;
-            $num_nl++ while $p =~ s/\r?\n//;
-            if ($num_nl >= 2) {
-                $is_pb++;
-                $w = 0;
-            } else {
-                $p = " ";
-                $w = 1;
-            }
-        } else {
-            if ($is_mb) {
-                $w = _ta_mbswidth0($p);
-            } else {
-                $w = ta_length($p);
-            }
-        }
-        $col += $w;
-        #say "D:col=$col, is_pb=${\($is_pb//0)}, is_ws=${\($is_ws//0)}, num_nl=$num_nl";
+    # basically similar to Text::WideChar::Util's algorithm. we adjust for
+    # dealing with ANSI codes by splitting codes first (to easily do color
+    # resets/restarts), then grouping into words and paras, then doing wrapping.
 
-        if ($is_pb) {
-            push @res, "\n" x $num_nl;
-            $col = 0;
-        } elsif ($col > $width+1) {
-            # remove space at the end of prev line
-            if (@res && $res[-1] eq ' ') {
-                pop @res;
-            }
+    my @termst; # store term type, 's' (spaces), 'w' (word), or 'p' (parabreak)
+    my @terms;  # store the text (w/ codes), for ws only store the codes
+    my @pterms; # store the plaintext ver, but only for ws to check parabreak
+    my @termsw; # store width of each term, only for non-ws
+    my @termsc; # store color restart code
+    {
+        my @ch = ta_split_codes_single($text);
+        my $crcode = ""; # code for color restart to be put at the start of line
+        my $term     = '';
+        my $pterm    = '';
+        my $was_word = 0;
+        my $was_ws   = 0;
+        while (my ($pt, $c) = splice(@ch, 0, 2)) {
+            #use Data::Dump; print "D:chunk: "; dd [$pt, $c];
+            my @s = $pt =~ /(\S+|\s+)/gos;
+            my $only_code = 1 if !@s;
+            while ($only_code || defined(my $s = shift @s)) {
+                # empty text, only code
+                if ($only_code) {
+                    $s = "";
+                    $term .= $c;
+                }
+                #say "D:s=[$s]  was_ws=$was_ws  was_word=$was_word  \@ch=",~~@ch,"  \@s=",~~@s;
 
-            push @res, "\n";
-            if ($is_ws) {
-                $col = 0;
-            } else {
-                push @res, $p;
-                $col = $w;
-            }
-        } else {
-            # remove space at the end of text
-            if (@p || !$is_ws) {
-                push @res, $p;
-            } else {
-                if ($num_nl == 1) {
-                    push @res, "\n";
+                if ($s =~ /\S/) {
+                    if ($was_ws) {
+                        #say "D:found word, completed previous ws [$term]";
+                        push @termst, 's';
+                        push @terms , $term;
+                        push @pterms, $pterm;
+                        push @termsw, undef;
+                        push @termsc, $crcode;
+                        # start new word
+                        $pterm = ''; $term = '';
+                    }
+                    $pterm .= $s;
+                    $term  .= $s; $term .= $c if defined($c) && !@s;
+                    if (!@s && !@ch) {
+                        #say "D:complete word because this is the last token";
+                        push @termst, 'w';
+                        push @terms , $term;
+                        push @pterms, "";
+                        push @termsw, $is_mb ? mbswidth($pterm):length($pterm);
+                        push @termsc, $crcode;
+                    }
+                    $was_ws = 0; $was_word = 1;
+                } elsif (length($s)) {
+                    if ($was_word) {
+                        #say "D:found ws, completed previous word [$term]";
+                        push @termst, 'w';
+                        push @terms , $term;
+                        push @pterms, "";
+                        push @termsw, $is_mb ? mbswidth($pterm):length($pterm);
+                        push @termsc, $crcode;
+                        # start new ws
+                        $pterm = ''; $term = '';
+                    }
+                    $pterm .= $s;
+                    $term  .= $c if defined($c) && !@s;
+                    if (!@s && !@ch) {
+                        #say "D:complete ws because this is the last token";
+                        push @termst, 's';
+                        push @terms , $term;
+                        push @pterms, $pterm;
+                        push @termsw, undef;
+                        push @termsc, $crcode;
+                    }
+                    $was_ws = 1; $was_word = 0;
+                }
+
+                if (!@s) {
+                    if (defined($c) && $c =~ /m\z/) {
+                        if ($c eq "\e[0m") {
+                            #say "D:found color reset, emptying crcode";
+                            $crcode = "";
+                        } else {
+                            #say "D:adding to crcode";
+                            $crcode .= $c;
+                        }
+                    }
+                    last if $only_code;
+                }
+
+            } # splice @s
+        } # splice @ch
+    }
+
+    # mark parabreaks
+    {
+        my $i = 0;
+        while ($i < @pterms) {
+            if ($termst[$i] eq 's') {
+                if ($pterms[$i] =~ /[ \t]*(\n(?:[ \t]*\n)+)([ \t]*)/) {
+                    #say "D:found parabreak";
+                    $pterms[$i] = $1;
+                    $termst[$i] = 'p';
+                    if ($i < @pterms-1) {
+                        # stick color code to the beginning of next para
+                        $terms [$i+1] = $terms[$i] . $terms [$i+1];
+                        $terms [$i] = "";
+                    }
+                    if (length $2) {
+                        #say "D:found space after parabreak, splitting";
+                        splice @termst, $i+1, 0, "s";
+                        splice @terms , $i+1, 0, "";
+                        splice @pterms, $i+1, 0, $2;
+                        splice @termsw, $i+1, 0, undef;
+                        splice @termsc, $i+1, 0, $termsc[$i];
+                        $i += 2;
+                        next;
+                    }
                 }
             }
+            $i++;
         }
     }
+
+    #use Data::Dump::Color; my @d; for (0..$#terms) { push @d, {type=>$termst[$_], term=>$terms[$_], pterm=>$pterms[$_], termc=>$termsc[$_], termw=>$termsw[$_], } } dd \@d;
+    #return;
+
+    # now we perform wrapping
+
+    my @res;
+    {
+        my $tw = $opts->{tab_width} // 8;
+        die "Please specify a positive tab width" unless $tw > 0;
+        my $optfli  = $opts->{flindent};
+        my $optfliw = Text::WideChar::Util::_get_indent_width($is_mb, $optfli, $tw) if defined $optfli;
+        my $optsli  = $opts->{slindent};
+        my $optsliw = Text::WideChar::Util::_get_indent_width($is_mb, $optsli, $tw) if defined $optsli;
+        my $pad = $opts->{pad};
+        my $x = 0;
+        my $y = 0;
+        my ($fli, $sli, $fliw, $sliw);
+        my $is_parastart = 1;
+        my $line_has_word = 0;
+      TERM:
+        for my $i (0..$#terms) {
+            my $termt = $termst[$i];
+            my $term  = $terms[$i];
+            my $pterm = $pterms[$i];
+            my $termw = $termsw[$i];
+            my $crcode = $i > 0 ? $termsc[$i-1] : "";
+            #say "D:term=[", ($termt eq 'w' ? $term : $pterm), "] ($termt)";
+
+            # end of paragraph
+            if ($termt eq 'p') {
+                my $numnl = 0;
+                $numnl++ while $pterm =~ /\n/g;
+                for (1..$numnl) {
+                    push @res, "\e[0m" if $crcode && $_ == 1;
+                    push @res, " " x ($width-$x) if $pad;
+                    push @res, "\n";
+                    $x = 0;
+                    $y++;
+                }
+                $line_has_word = 0;
+                $x = 0;
+                $is_parastart = 1;
+                next TERM;
+            }
+
+            if ($is_parastart) {
+                # this is the start of paragraph, determine indents
+                if (defined $optfli) {
+                    $fli  = $optfli;
+                    $fliw = $optfliw;
+                } else {
+                    if ($termt eq 's') {
+                        $fli  = $pterm;
+                        $fliw = Text::WideChar::Util::_get_indent_width($is_mb, $fli, $tw);
+                    } else {
+                        $fli  = "";
+                        $fliw = 0;
+                    }
+                    #say "D:deduced fli from text [$fli] ($fliw)";
+                    my $j = $i;
+                    $sli = undef;
+                    while ($j < @terms && $termst[$j] ne 'p') {
+                        if ($termst[$j] eq 's') {
+                            if ($pterms[$j] =~ /\n([ \t]+)/) {
+                                $sli  = $1;
+                                $sliw = Text::WideChar::Util::_get_indent_width($is_mb, $sli, $tw);
+                                last;
+                            }
+                        }
+                        $j++;
+                    }
+                    if (!defined($sli)) {
+                        $sli  = "";
+                        $sliw = 0;
+                    }
+                    #say "D:deduced sli from text [$sli] ($sliw)";
+                    die "Subsequent indent must be less than width" if $sliw >= $width;
+                }
+
+                #say "D:inserting the fli [$fli] ($fliw)";
+                push @res, $fli;
+                $x += $fliw;
+            } # parastart
+
+            $is_parastart = 0;
+
+            if ($termt eq 's') {
+                # just print the codes
+                push @res, $term;
+
+                # maintain terminating newline
+                if ($pterm =~ /\n/ && $i == $#terms) {
+                    push @res, "\e[0m" if $crcode;
+                    push @res, " " x ($width-$x) if $pad;
+                    push @res, "\n";
+                    $line_has_word = 0;
+                }
+            }
+
+            if ($termt eq 'w') {
+                # we need to chop long words
+                my @words;
+                my @wordsw;
+                my $j = 0;
+                my $c = ""; # see below for explanation
+                while (1) {
+                    $j++;
+                    # most words shouldn't be that long
+                    if ($termw <= $width-$sliw) {
+                        push @words , $term;
+                        push @wordsw, $termw;
+                        last;
+                    }
+                    #use Data::Dump; print "D:truncating long word "; dd $term;
+                    my $res = $is_mb ? ta_mbtrunc($term, $width-$sliw, 1) :
+                        ta_trunc($term, $width-$sliw, 1);
+
+                    my ($tword, $twordw);
+                    if ($j == 1) {
+                        $tword  = $res->[0];
+                        $twordw = $res->[1];
+                    } else {
+                        # since ta_{,mb}trunc() adds the codes until the end of
+                        # the word, to avoid messing colors, for the second word
+                        # and so on we need to restart colors by prefixing with:
+                        # \e[0m (reset) + $crcode + (all the codes from the
+                        # start of the long word up until the truncated
+                        # position, stored in $c).
+                        #
+                        # there might be faster way, but it is expected that
+                        # long words are not that common.
+                        $tword  = ($crcode ? "\e[0m" . $crcode : "") .
+                            $c . $res->[0];
+                        $twordw = $res->[1];
+                    }
+                    $c .= ta_extract_codes(substr($term, 0, $res->[2]));
+                    #use Data::Dump; print "D:truncated word is "; dd $tword;
+
+                    push @words , $tword;
+                    push @wordsw, $twordw;
+                    $term  = substr($term, $res->[2]);
+                    $termw = $is_mb ? _ta_mbswidth0($term) : ta_length($term);
+                }
+
+                #use Data::Dump; print "D:words="; dd \@words; print "D:wordsw="; dd \@wordsw;
+                # the core of the wrapping algo
+                for my $word (@words) {
+                    my $wordw = shift @wordsw;
+                    #say "D:x=$x word=$word wordw=$wordw line_has_word=$line_has_word width=$width";
+                    if ($x + ($line_has_word ? 1:0) + $wordw <= $width) {
+                        if ($line_has_word) {
+                            push @res, " ";
+                            $x++;
+                        }
+                        push @res, $word;
+                        $x += $wordw;
+                    } else {
+                        push @res, "\e[0m" if $crcode;
+                        push @res, " " x ($width-$x) if $pad;
+                        push @res, "\n";
+                        push @res, $crcode;
+                        push @res, $sli, $word;
+                        $x = $sliw + $wordw;
+                        $y++;
+                    }
+                    $line_has_word++;
+                }
+
+            }
+        } # for term
+        push @res, " " x ($width-$x) if $line_has_word && $pad;
+    }
+
     join "", @res;
 }
 
@@ -215,33 +457,44 @@ sub ta_mbpad {
 sub _ta_trunc {
     my ($is_mb, $text, $width, $return_width) = @_;
 
+    # return_width (undocumented): if set to 1, will return [truncated_text,
+    # visual width, length(chars) up to truncation point]
+
     my $w = $is_mb ? _ta_mbswidth0($text) : ta_length($text);
-    return $text if $w <= $width;
+    if ($w <= $width) {
+        return $return_width ? [$text, $w, length($text)] : $text;
+    }
     my @p = ta_split_codes($text);
     my @res;
     my $append = 1; # whether we should add more text
     $w = 0;
+    my $c = 0;
     while (my ($t, $ansi) = splice @p, 0, 2) {
         if ($append) {
             my $tw = $is_mb ? mbswidth($t) : length($t);
             if ($w+$tw <= $width) {
                 push @res, $t;
                 $w += $tw;
+                $c += length($t);
                 $append = 0 if $w == $width;
             } else {
                 my $tres = $is_mb ?
                     mbtrunc($t, $width-$w, 1) :
-                        [substr($t, 0, $width-$w), $width-$w];
+                        [substr($t, 0, $width-$w), $width-$w, $width-$w];
                 push @res, $tres->[0];
                 $w += $tres->[1];
+                $c += $tres->[2];
                 $append = 0;
             }
         }
-        push @res, $ansi if defined($ansi);
+        if (defined $ansi) {
+            push @res, $ansi;
+            $c += length($ansi) if $append;
+        }
     }
 
     if ($return_width) {
-        return [join("", @res), $w];
+        return [join("", @res), $w, $c];
     } else {
         return join("", @res);
     }
@@ -256,22 +509,18 @@ sub ta_mbtrunc {
 }
 
 sub _ta_highlight {
-    my ($is_all, $text, $needle, $color, $ci) = @_;
-
-    # our technique to not mess up existing color is to save up all ANSI color
-    # codes (m commands) from the last reset/normal (\e[0m). then after we
-    # insert the highlight, we reinsert the saved up codes.
+    my ($is_all, $text, $needle, $color) = @_;
 
     # break into chunks
-    my @p = ta_split_codes_single($text);
-    my (@t, @c, @sc); # texts, codes, saved codes
+    my (@chptext, @chcode, @chsavedc); # chunk plain texts, codes, saved codes
     my $sc = "";
     my $plaintext = "";
-    while (my ($t, $c) = splice(@p, 0, 2)) {
-        push @t, $t;
-        push @c, $c;
-        push @sc, $sc;
-        $plaintext .= $t;
+    my @ch = ta_split_codes_single($text);
+    while (my ($pt, $c) = splice(@ch, 0, 2)) {
+        push @chptext , $pt;
+        push @chcode  , $c;
+        push @chsavedc, $sc;
+        $plaintext .= $pt;
         if (defined($c) && $c =~ /m\z/) {
             if ($c eq "\e[0m") {
                 $sc = "";
@@ -280,79 +529,111 @@ sub _ta_highlight {
             }
         }
     }
-    #use Data::Dump; print "\@t: "; dd \@t; print "\@c: "; dd \@c; print "\@sc: "; dd \@sc;
+    #use Data::Dump; print "\@chptext: "; dd \@chptext; print "\@chcode: "; dd \@chcode; print "\@chsavedc: "; dd \@chsavedc;
 
-    if ($ci) {
-        $text = lc($text);
-        $needle = lc($needle);
+    # gather a list of needles to highlight, with their positions
+    my (@needle, @npos);
+    if (ref($needle) eq 'Regexp') {
+        my @m = $plaintext =~ /$needle/g;
+        return $text unless @m;
+        my $pos = 0;
+        while ($pos < length($plaintext)) {
+            my @pt;
+            for (@m) {
+                my $p = index($plaintext, $_, $pos);
+                push @pt, [$p, $_] if $p >= 0;
+            }
+            last unless @pt;
+            my $pmin = $pt[0][0];
+            my $t = $pt[0][1];
+            for (@pt) {
+                if ($pmin > $_->[0] ||
+                        $pmin==$_->[0] && length($t) < length($_->[1])) {
+                    $pmin = $_->[0];
+                    $t = $_->[1];
+                }
+            }
+            push @needle, $t;
+            push @npos  , $pmin;
+            last unless $is_all;
+            $pos = $pmin + length($t);
+        }
+    } else {
+        my $pos = 0;
+        while (1) {
+            #say "D:finding '$needle' in '$plaintext' from pos '$pos'";
+            my $p = index($plaintext, $needle, $pos);
+            last if $p < 0;
+            push @needle, $needle;
+            push @npos  , $p;
+            last unless $is_all;
+            $pos = $p + length($needle);
+            last if $pos >= length($plaintext);
+        }
+        return $text unless @needle;
     }
-    my $npos = index($plaintext, $needle);
-    return $text unless $npos >= 0;
+    #use Data::Dump; print "\@needle: "; dd \@needle; print "\@npos: "; dd \@npos;
 
     my @res;
     my $found = 1;
     my $pos = 0;
     my $i = 0;
+    my $curneed = shift @needle;
+    my $npos    = shift @npos;
   CHUNK:
     while (1) {
-        last if $i >= @t;
-        my $pos2  = $pos+length($t[$i])-1;
-        my $npos2 = $npos+length($needle)-1;
-        #say "D: npos=$npos, npos2=$npos2, pos=$pos, pos2=$pos2";
+        last if $i >= @chptext;
+        my $pos2  = $pos+length($chptext[$i])-1;
+        my $npos2 = $npos+length($curneed)-1;
+        #say "D: chunk=[$chptext[$i]], npos=$npos, npos2=$npos2, pos=$pos, pos2=$pos2";
         if ($pos > $npos2 || $pos2 < $npos || !$found) {
-            #say "D:inserting chunk: [$t[$i]]";
+            #say "D:inserting chunk: [$chptext[$i]]";
             # no need to highlight
-            push @res, $t[$i];
-            push @res, $c[$i] if defined $c[$i];
+            push @res, $chptext[$i];
+            push @res, $chcode[$i] if defined $chcode[$i];
             goto L1;
         }
 
         # there is chunk text at the left of needle?
         if ($pos < $npos) {
-            my $pre = substr($t[$i], 0, $npos-$pos);
+            my $pre = substr($chptext[$i], 0, $npos-$pos);
             #say "D:inserting pre=[$pre]";
             push @res, $pre;
         }
 
-        my $npart = substr($needle,
+        my $npart = substr($curneed,
                            max(0, $pos-$npos),
                            min($pos2, $npos2)-max($pos, $npos)+1);
         if (length($npart)) {
             #say "D:inserting npart=[$npart]";
             push @res, $color, $npart;
             push @res, "\e[0m";
-            #use Data::Dump; dd [$sc[$i], $c[$i]];
-            push @res, $sc[$i];
+            #use Data::Dump; dd [$chsaved[$i], $chcode[$i]];
+            push @res, $chsavedc[$i];
         }
 
-        # there is chunk text at the right of needle?
+        # is there chunk text at the right of needle?
         if ($npos2 <= $pos2) {
-            #say "D:We have run past needle";
-            my $post = substr($t[$i], $npos2-$pos+1);
+            #say "D:We have run past current needle [$curneed]";
+            my $post = substr($chptext[$i], $npos2-$pos+1);
 
-            # ready to find next occurence?
-            if ($is_all) {
-                #say "D:Finding another needle ($needle) from pos ", ($npos2+1);
-                my $new_npos = index($plaintext, $needle, $npos2+1);
-                if ($new_npos >= 0) {
-                    $found++;
-                    $pos   = $npos2+1;
-                    $npos2 = $new_npos + length($needle)-1;
-                    #say "D:Replacing chunk for new needle search: [$post]";
-                    $t[$i] = $post;
-                    $npos = $new_npos;
-                    redo CHUNK;
-                } else {
-                    $found = 0;
-                }
+            if (@needle) {
+                $curneed = shift @needle;
+                $npos    = shift @npos;
+                #say "D:Finding the next needle ($curneed) at pos $npos";
+                $pos     = $npos2+1;
+                $chptext[$i] = $post;
+                $found = 1;
+                redo CHUNK;
             } else {
+                # we're done finding needle
                 $found = 0;
             }
 
             if (!$found) {
                 #say "D:inserting post=[$post]";
                 push @res, $post;
-                push @res, $c[$i] if defined $c[$i];
+                push @res, $chcode[$i] if defined $chcode[$i];
             }
         }
 
@@ -372,6 +653,37 @@ sub ta_highlight_all {
     _ta_highlight(1, @_);
 }
 
+sub ta_add_color_resets {
+    my (@text) = @_;
+
+    my @res;
+    my $i = 0;
+    my $savedc = "";
+    for my $text (@text) {
+        $i++;
+        my $newt = $i > 1 && !$savedc ? "\e[0m" : $savedc;
+
+        # break into chunks
+        my @ch = ta_split_codes_single($text);
+        while (my ($t, $c) = splice(@ch, 0, 2)) {
+            $newt .= $t;
+            if (defined($c) && $c =~ /m\z/) {
+                $newt .= $c;
+                if ($c eq "\e[0m") {
+                    $savedc = "";
+                } else {
+                    $savedc .= $c;
+                }
+            }
+        }
+
+        $newt .= "\e[0m" if $savedc && $i < @text;
+        push @res, $newt;
+    }
+
+    @res;
+}
+
 1;
 # ABSTRACT: Routines for text containing ANSI escape codes
 
@@ -385,11 +697,12 @@ Text::ANSI::Util - Routines for text containing ANSI escape codes
 
 =head1 VERSION
 
-version 0.07
+version 0.08
 
 =head1 SYNOPSIS
 
  use Text::ANSI::Util qw(
+     ta_add_color_resets
      ta_detect ta_highlight ta_highlight_all ta_length ta_mbpad ta_mbswidth
      ta_mbswidth_height ta_mbwrap ta_pad ta_split_codes ta_split_codes_single
      ta_strip ta_wrap);
@@ -469,6 +782,8 @@ is C<0xc2, 0x9b> (2 bytes).
 
 =back
 
+=encoding utf8
+
 =head1 FUNCTIONS
 
 =head2 ta_detect($text) => BOOL
@@ -479,6 +794,11 @@ Return true if C<$text> contains ANSI escape codes, false otherwise.
 
 Count the number of bytes in $text, while ignoring ANSI escape codes. Equivalent
 to C<< length(ta_strip($text) >>. See also: ta_mbswidth().
+
+=head2 ta_length_height($text) => [INT, INT]
+
+Like ta_length(), but also gives height (number of lines). For example, C<<
+ta_length_height("foobar\nb\n") >> gives [6, 3].
 
 =head2 ta_mbswidth($text) => INT
 
@@ -499,11 +819,15 @@ text first against C<< /\r?\n/ >>.
 =head2 ta_mbswidth_height($text) => [INT, INT]
 
 Like ta_mbswidth(), but also gives height (number of lines). For example, C<<
-ta_mbswidth_height("foobar\nb\n") >> gives [6, 3].
+ta_mbswidth_height("西爪哇\nb\n") >> gives [6, 3].
 
 =head2 ta_strip($text) => STR
 
 Strip ANSI escape codes from C<$text>, returning the stripped text.
+
+=head2 ta_extract_codes($text) => STR
+
+This is the opposite of ta_strip(), return only the ANSI codes in C<$text>.
 
 =head2 ta_split_codes($text) => LIST
 
@@ -530,27 +854,87 @@ so you can do something like:
 Like ta_split_codes() but each ANSI escape code is split separately, instead of
 grouped together.
 
-=head2 ta_wrap($text, $width) => STR
+=head2 ta_wrap($text, $width, \%opts) => STR
 
-Wrap C<$text> to C<$width> columns.
+Like L<Text::WideChar::Util>'s wrap() except handles ANSI escape codes. Perform
+color reset at the end of each line and a color restart at the start of
+subsequent line so the text is safe for combining in a multicolumn/tabular
+layout.
 
-C<$width> defaults to 80 if not specified.
+Options:
 
-Note: currently performance is rather abysmal (~ 1200/s on my Core i5-2400
-3.1GHz desktop for a ~ 1KB of text), so call this routine sparingly ;-).
+=over
 
-=head2 ta_mbwrap($text, $width) => STR
+=item * flindent => STR
+
+First line indent. See Text::WideChar::Util for more details.
+
+=item * slindent => STR
+
+First line indent. See Text::WideChar::Util for more details.
+
+=item * tab_width => INT (default: 8)
+
+First line indent. See Text::WideChar::Util for more details.
+
+=item * pad => BOOL (default: 0)
+
+If set to true, will pad each line to C<$width>. This is convenient if you need
+the lines padded, saves calls to ta_pad().
+
+=back
+
+Performance: ~750/s on my Core i5-2400 3.1GHz desktop for a ~1KB of text (with
+zero to moderate amount of color codes). As a comparison, Text::WideChar::Util's
+wrap() can do about 3100/s.
+
+=head2 ta_mbwrap($text, $width, \%opts) => STR
 
 Like ta_wrap(), but it uses ta_mbswidth() instead of ta_length(), so it can
 handle wide characters.
 
-Note: for text which does not have whitespaces between words, like Chinese, you
-will have to separate the words first (e.g. using L<Lingua::ZH::WordSegmenter>).
-The module also currently does not handle whitespace-like characters other than
-ASCII 32 (for example, the Chinese dot 。).
+Performance: ~650/s on my Core i5-2400 3.1GHz desktop for a ~1KB of text (with
+zero to moderate amount of color codes). As a comparison, Text::WideChar::Util's
+mbwrap() can do about 2300/s.
 
-Note: currently performance is rather abysmal (~ 1000/s on my Core i5-2400
-3.1GHz desktop for a ~ 1KB of text), so call this routine sparingly ;-).
+=head2 ta_add_color_resets(@text) => LIST
+
+Make sure that a color reset command (add C<\e[0m]>) to the end of each element
+and a color restart (add all the color codes from the previous element, from the
+last color reset) to the start of the next element, and so on. Return the new
+list.
+
+This makes each element safe to be combined with other array of text into a
+single line, e.g. in a multicolumn/tabular layout. An example:
+
+Without color resets:
+
+ my @col1 = split /\n/, "\e[31mred\nmerah\e[0m";
+ my @col2 = split /\n/, "\e[32mgreen\e[1m\nhijau tebal\e[0m";
+
+ printf "%s | %s\n", $col1[0], $col2[0];
+ printf "%s | %s\n", $col1[1], $col2[1];
+
+the printed output:
+
+ \e[31mred | \e[32mgreen
+ merah\e[0m | \e[1mhijau tebal\e[0m
+
+The C<merah> text on the second line will become green because of the effect of
+the last color command printed (C<\e[32m>). However, with ta_add_color_resets():
+
+ my @col1 = ta_add_color_resets(split /\n/, "\e[31mred\nmerah\e[0m");
+ my @col2 = ta_add_color_resets(split /\n/, "\e[32mgreen\e[1m\nhijau tebal\e[0m");
+
+ printf "%s | %s\n", $col1[0], $col2[0];
+ printf "%s | %s\n", $col1[1], $col2[1];
+
+the printed output (C<< <...> >>) marks the code added by ta_add_color_resets():
+
+ \e[31mred<\e[0m> | \e[32mgreen\e[1m<\e[0m>
+ <\e[31m>merah\e[0m | <\e[32m\e[1m>hijau tebal\e[0m
+
+All the cells are printed with the intended colors.
 
 =head2 ta_pad($text, $width[, $which[, $padchar[, $truncate]]]) => STR
 
@@ -581,27 +965,51 @@ Does *not* handle multiline text; you can split text by C</\r?\n/> yourself.
 Like ta_trunc() but it uses ta_mbswidth() instead of ta_length(), so it can
 handle wide characters.
 
-=head2 ta_highlight($text, $needle, $color, $ci) => STR
+=head2 ta_highlight($text, $needle, $color) => STR
 
 Highlight the first occurence of C<$needle> in C<$text> with <$color>, taking
 care not to mess up existing colors.
 
-C<$ci> can be set to 1 to search case-insensitively.
+C<$needle> can be a string or a Regexp object.
 
-=head2 ta_highlight_all($text, $needle, $color, $ci) => STR
+Performance: ~ 20k/s on my Core i5-2400 3.1GHz desktop for a ~ 1KB of text and a
+needle of length ~ 7.
+
+Implementation note: to not mess up colors, we save up all color codes from the
+last reset (C<\e[0m]>) before inserting the highlight color + highlight text.
+Then we issue C<\e[0m> and the saved up color code to return back to the color
+state before the highlight is inserted. This is the same technique as described
+in ta_add_color_resets().
+
+=head2 ta_highlight_all($text, $needle, $color) => STR
 
 Like ta_highlight(), but highlight all occurences instead of only the first.
+
+Performance: ~ 4k/s on my Core i5-2400 3.1GHz desktop for a ~ 1KB of text and a
+needle of length ~ 7 and number of occurences ~ 13.
 
 =head1 FAQ
 
 =head2 How do I truncate string based on number of characters?
 
-You can simply use Perl's ta_trunc() even on text containing wide characters.
+You can simply use ta_trunc() even on text containing wide characters.
 ta_trunc() uses Perl's length() which works on a per-character basis.
+
+=head2 How do I highlight a string case-insensitively?
+
+You can currently use a regex for the C<$needle> and use the C<i> modifier.
+Example:
+
+ use Term::ANSIColor;
+ ta_highlight($text, qr/\b(foo)\b/i, color("bold red"));
 
 =head1 TODOS
 
 =over
+
+=item * ta_split
+
+A generalized version of ta_split_lines().
 
 =back
 

@@ -3,22 +3,17 @@
 use 5.010001;
 use strict;
 use warnings;
-use utf8;
 use constant NL => "\n";
 
+use Data::Dump qw(dump);
 use POSIX;
 use Test::More 0.98;
 use Text::ANSI::Util qw(
-                           ta_detect ta_length ta_mbpad ta_mbswidth
-                           ta_mbswidth_height ta_mbtrunc ta_mbwrap ta_pad
+                           ta_add_color_resets
+                           ta_detect ta_length ta_length_height ta_pad
                            ta_split_codes ta_split_codes_single
                            ta_strip ta_trunc ta_wrap ta_highlight
-                           ta_highlight_all);
-
-# check if chinese locale is supported, otherwise bail
-unless (POSIX::setlocale(&POSIX::LC_ALL, "zh_CN.utf8")) {
-    plan skip_all => "Chinese locale not supported on this system";
-}
+                           ta_highlight_all ta_extract_codes);
 
 subtest "ta_detect" => sub {
     ok(!ta_detect("a"), 'neg 1');
@@ -31,6 +26,12 @@ subtest "ta_strip" => sub {
     is(ta_strip(""), "");
     is(ta_strip("hello"), "hello");
     is(ta_strip("\e[31;47mhello\e[0m"), "hello");
+};
+
+subtest "ta_extract_codes" => sub {
+    is(ta_extract_codes(""), "");
+    is(ta_extract_codes("hello"), "");
+    is(ta_extract_codes("\e[31;47mhello\e[0m"), "\e[31;47m\e[0m");
 };
 
 subtest "ta_split_codes" => sub {
@@ -54,20 +55,12 @@ subtest "ta_length" => sub {
     is(ta_length("\e[31;47mhello\e[0m"), 5);
 };
 
-subtest "ta_mbswidth_height" => sub {
-    is_deeply(ta_mbswidth_height(""), [0, 0]);
-    is_deeply(ta_mbswidth_height("\e[0m"), [0, 0]);
-    is_deeply(ta_mbswidth_height(" "), [1, 1]);
-    is_deeply(ta_mbswidth_height(" \n"), [1, 2]);
-    is_deeply(ta_mbswidth_height("\e[31;47m你好吗\e[0m\nhello\n"), [6, 3]);
-};
-
-subtest "ta_mbswidth" => sub {
-    is_deeply(ta_mbswidth(""), 0);
-    is_deeply(ta_mbswidth("\e[0m"), 0);
-    is_deeply(ta_mbswidth(" "), 1);
-    is_deeply(ta_mbswidth(" \n"), 1);
-    is_deeply(ta_mbswidth("\e[31;47m你好吗\e[0m\nhello\n"), 6);
+subtest "ta_length_height" => sub {
+    is_deeply(ta_length_height(""), [0, 0]);
+    is_deeply(ta_length_height("\e[0m"), [0, 0]);
+    is_deeply(ta_length_height(" "), [1, 1]);
+    is_deeply(ta_length_height(" \n"), [1, 2]);
+    is_deeply(ta_length_height("\e[31;47myellow\e[0m\nhello\n"), [6, 3]);
 };
 
 # single paragraph
@@ -111,25 +104,43 @@ qq|want to go? I'll keep you company. Mr|.NL.
 qq|Goh, I'm fine. You don't have to keep...|;
 
 subtest "ta_wrap" => sub {
-    is(ta_wrap($txt1 , 40), $txt1w );
-    is(ta_wrap($txt1b, 40), $txt1bw);
-    is(ta_wrap($txt1c, 40), $txt1cw);
-};
+    my ($res, $cres);
 
-my $txt2 = <<_;
-\e[31;47mI\e[0m dont wan't to go home. 我不想回家. Where do you want to go? I'll keep you
-company. 那你想去哪里？我陪你. Mr Goh, I'm fine. 吴先生. 我没事. You don't have
-to keep me company. 你不用陪我.
-_
-#qq--------10--------20--------30--------40--------50
-my $txt2w =
-qq|\e[31;47mI\e[0m dont wan't to go home. 我不想回家.|.NL.
-qq|Where do you want to go? I'll keep you|.NL.
-qq|company. 那你想去哪里？我陪你. Mr Goh,|.NL.
-qq|I'm fine. 吴先生. 我没事. You don't have|.NL.
-qq|to keep me company. 你不用陪我.|.NL;
-subtest "ta_mbwrap" => sub {
-    is(ta_mbwrap($txt2, 40), $txt2w);
+    $res  = ta_wrap($txt1 , 40);
+    $cres = $txt1w;
+    is($res, $cres, "single paragraph")
+        or diag dump([split /^/, $cres], [split /^/, $res]);
+
+    $res  = ta_wrap($txt1b, 40);
+    $cres = $txt1bw;
+    is($res, $cres, "multiple paragraph")
+        or diag dump([split /^/, $cres], [split /^/, $res]);
+
+    $res  = ta_wrap($txt1c, 40);
+    $cres = $txt1cw;
+    is($res, $cres, "no terminating newline")
+        or diag dump([split /^/, $cres], [split /^/, $res]);
+
+    $res  = ta_wrap("x 12345678901234 x", 10);
+    $cres = "x\n1234567890\n1234 x";
+    is($res, $cres, "truncate long word 1")
+        or diag dump([split /^/, $cres], [split /^/, $res]);
+
+    $res  = ta_wrap("x \e[1m12345678901234\e[0m x", 10);
+    $cres = "x\e[1m\e[0m\n\e[1m1234567890\e[0m\e[0m\n\e[1m1234\e[0m x";
+    is($res, $cres, "truncate long word 2")
+        or diag dump([split /^/, $cres], [split /^/, $res]);
+
+    $res  = ta_wrap("x\n\e[1m\nx", 10);
+    $cres = "x\n\n\e[1mx";
+    is($res, $cres, "color code in parabreak")
+        or diag dump([split /^/, $cres], [split /^/, $res]);
+
+    # XXX fli opt
+    # XXX fli deduced
+    # XXX fli opt
+    # XXX sli deduced
+    # XXX pad opt
 };
 
 subtest "ta_trunc" => sub {
@@ -140,20 +151,6 @@ subtest "ta_trunc" => sub {
     is(ta_trunc($t, 2), "\e[31m1\e[32m2\e[33m\e[0m");
     is(ta_trunc($t, 1), "\e[31m1\e[32m\e[33m\e[0m");
     is(ta_trunc($t, 0), "\e[31m\e[32m\e[33m\e[0m");
-};
-
-subtest "ta_mbtrunc" => sub {
-    my $t = "\e[31m不\e[32m用\e[33m陪\e[0m我";
-    is(ta_mbtrunc($t, 9), $t);
-    is(ta_mbtrunc($t, 8), $t);
-    is(ta_mbtrunc($t, 7), "\e[31m不\e[32m用\e[33m陪\e[0m");
-    is(ta_mbtrunc($t, 6), "\e[31m不\e[32m用\e[33m陪\e[0m");
-    is(ta_mbtrunc($t, 5), "\e[31m不\e[32m用\e[33m\e[0m");
-    is(ta_mbtrunc($t, 4), "\e[31m不\e[32m用\e[33m\e[0m");
-    is(ta_mbtrunc($t, 3), "\e[31m不\e[32m\e[33m\e[0m");
-    is(ta_mbtrunc($t, 2), "\e[31m不\e[32m\e[33m\e[0m");
-    is(ta_mbtrunc($t, 1), "\e[31m\e[32m\e[33m\e[0m");
-    is(ta_mbtrunc($t, 0), "\e[31m\e[32m\e[33m\e[0m");
 };
 
 subtest "ta_pad" => sub {
@@ -167,19 +164,6 @@ subtest "ta_pad" => sub {
     is(ta_pad("${foo}12345678", 10, undef, undef, 1), "${foo}1234567");
 };
 
-subtest "ta_mbpad" => sub {
-    my $foo = "\e[31;47m你好吗\e[0m";
-    is(ta_mbpad(""    , 10), "          ", "empty");
-    is(ta_mbpad("$foo", 10), "$foo    ");
-    is(ta_mbpad("$foo", 10, "l"), "    $foo");
-    is(ta_mbpad("$foo", 10, "c"), "  $foo  ");
-    is(ta_mbpad("$foo", 10, "r", "x"), "${foo}xxxx");
-    is(ta_mbpad("${foo}12345678", 10), "${foo}12345678");
-    is(ta_mbpad("${foo}12345678", 10, undef, undef, 1), "${foo}1234");
-    is(ta_mbpad("$foo", 3, undef, undef, 1), "\e[31;47m你\e[0m ",
-       "repad truncated");
-};
-
 subtest "ta_highlight" => sub {
     is(ta_highlight("\e[1m\e[31m12345\e[32m64567\e[0m", "456", "\e[7m"),
        "\e[1m\e[31m123\e[7m45\e[0m\e[1m\e[31m\e[7m6\e[0m\e[1m\e[31m\e[32m4567\e[0m");
@@ -188,6 +172,14 @@ subtest "ta_highlight" => sub {
 subtest "ta_highlight_all" => sub {
     is(ta_highlight_all("\e[1m\e[31m12345\e[32m674567\e[0m", "456", "\e[7m"),
        "\e[1m\e[31m123\e[7m45\e[0m\e[1m\e[31m\e[7m6\e[0m\e[1m\e[31m\e[32m7\e[7m456\e[0m\e[1m\e[31m\e[32m7\e[0m");
+};
+
+subtest "ta_add_color_resets" => sub {
+    is_deeply([ta_add_color_resets("\e[31mred and \e[1mbold", "beureum", "merah\e[0m normal", "normale")],
+              ["\e[31mred and \e[1mbold\e[0m",
+               "\e[31m\e[1mbeureum\e[0m",
+               "\e[31m\e[1mmerah\e[0m normal",
+               "\e[0mnormale"]);
 };
 
 DONE_TESTING:

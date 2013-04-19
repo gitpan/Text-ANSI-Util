@@ -1,5 +1,23 @@
 Revision history for Text-ANSI-Util
 
+0.08    2013-04-19 (SHARYANTO)
+
+        [ENHANCEMENTS]
+
+        - Add functions: ta_extract_codes, ta_add_color_resets,
+          ta_length_height.
+
+        - ta_highlight{,all}: $needle can now be a Regexp.
+
+        - ta_{,mb}wrap: Reimplement, now behavior similar to
+          Text::WideChar::Util's {,mb}wrap().
+
+        [INCOMPATIBLE CHANGES]
+
+        - ta_highlight{,_all}: Remove argument $ci, now use qr/foo/i as $needle
+          for case-insensitive highlighting.
+
+
 0.07    2013-04-10 (SHARYANTO)
 
         - Add functions: ta_split_codes_single, ta_highlight, ta_highlight_all.

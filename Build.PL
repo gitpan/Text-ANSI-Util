@@ -7,6 +7,7 @@ use Module::Build 0.3601;
 
 my %module_build_args = (
   "build_requires" => {
+    "Data::Dump" => 0,
     "Module::Build" => "0.3601",
     "Test::More" => "0.98"
   },
@@ -18,14 +19,14 @@ my %module_build_args = (
     "Steven Haryanto <stevenharyanto\@gmail.com>"
   ],
   "dist_name" => "Text-ANSI-Util",
-  "dist_version" => "0.07",
+  "dist_version" => "0.08",
   "license" => "perl",
   "module_name" => "Text::ANSI::Util",
   "recommends" => {},
   "recursive_test_files" => 1,
   "requires" => {
     "Text::CharWidth" => 0,
-    "Text::WideChar::Util" => "0.02",
+    "Text::WideChar::Util" => "0.04",
     "perl" => "5.010001"
   },
   "script_files" => []

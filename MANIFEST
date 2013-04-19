@@ -9,7 +9,8 @@ README
 dist.ini
 lib/Text/ANSI/Util.pm
 t/00-compile.t
-t/01-basics.t
+t/01-latin.t
+t/02-chinese.t
 t/release-pod-coverage.t
 t/release-pod-syntax.t
 t/release-rinci.t

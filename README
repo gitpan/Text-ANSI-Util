@@ -2,10 +2,11 @@ NAME
     Text::ANSI::Util - Routines for text containing ANSI escape codes
 
 VERSION
-    version 0.07
+    version 0.08
 
 SYNOPSIS
      use Text::ANSI::Util qw(
+         ta_add_color_resets
          ta_detect ta_highlight ta_highlight_all ta_length ta_mbpad ta_mbswidth
          ta_mbswidth_height ta_mbwrap ta_pad ta_split_codes ta_split_codes_single
          ta_strip ta_wrap);
@@ -21,10 +22,10 @@ SYNOPSIS
      # calculate visual width of text if printed on terminal (can handle Unicode
      # wide characters and exclude the ANSI escape codes)
      say ta_mbswidth("\e[31mred"); # => 3
-     say ta_mbswidth("\e[31m红色"); # => 4
+     say ta_mbswidth("\e[31mçº¢è²"); # => 4
 
      # ditto, but also return the number of lines
-     say ta_mbswidth_height("\e[31mred\n红色"); # => [4, 2]
+     say ta_mbswidth_height("\e[31mred\nçº¢è²"); # => [4, 2]
 
      # strip ANSI escape codes
      say ta_strip("\e[31mred"); # => "red"
@@ -90,6 +91,10 @@ FUNCTIONS
     Count the number of bytes in $text, while ignoring ANSI escape codes.
     Equivalent to "length(ta_strip($text)". See also: ta_mbswidth().
 
+  ta_length_height($text) => [INT, INT]
+    Like ta_length(), but also gives height (number of lines). For example,
+    "ta_length_height("foobar\nb\n")" gives [6, 3].
+
   ta_mbswidth($text) => INT
     Return visual width of $text (in number of columns) if printed on
     terminal. Equivalent to "Text::CharWidth::mbswidth(ta_strip($text))".
@@ -107,10 +112,13 @@ FUNCTIONS
 
   ta_mbswidth_height($text) => [INT, INT]
     Like ta_mbswidth(), but also gives height (number of lines). For
-    example, "ta_mbswidth_height("foobar\nb\n")" gives [6, 3].
+    example, "ta_mbswidth_height("西爪哇\nb\n")" gives [6, 3].
 
   ta_strip($text) => STR
     Strip ANSI escape codes from $text, returning the stripped text.
+
+  ta_extract_codes($text) => STR
+    This is the opposite of ta_strip(), return only the ANSI codes in $text.
 
   ta_split_codes($text) => LIST
     Split $text to a list containing alternating ANSI escape codes and text.
@@ -136,28 +144,82 @@ FUNCTIONS
     Like ta_split_codes() but each ANSI escape code is split separately,
     instead of grouped together.
 
-  ta_wrap($text, $width) => STR
-    Wrap $text to $width columns.
+  ta_wrap($text, $width, \%opts) => STR
+    Like Text::WideChar::Util's wrap() except handles ANSI escape codes.
+    Perform color reset at the end of each line and a color restart at the
+    start of subsequent line so the text is safe for combining in a
+    multicolumn/tabular layout.
 
-    $width defaults to 80 if not specified.
+    Options:
 
-    Note: currently performance is rather abysmal (~ 1200/s on my Core
-    i5-2400 3.1GHz desktop for a ~ 1KB of text), so call this routine
-    sparingly ;-).
+    *   flindent => STR
 
-  ta_mbwrap($text, $width) => STR
+        First line indent. See Text::WideChar::Util for more details.
+
+    *   slindent => STR
+
+        First line indent. See Text::WideChar::Util for more details.
+
+    *   tab_width => INT (default: 8)
+
+        First line indent. See Text::WideChar::Util for more details.
+
+    *   pad => BOOL (default: 0)
+
+        If set to true, will pad each line to $width. This is convenient if
+        you need the lines padded, saves calls to ta_pad().
+
+    Performance: ~750/s on my Core i5-2400 3.1GHz desktop for a ~1KB of text
+    (with zero to moderate amount of color codes). As a comparison,
+    Text::WideChar::Util's wrap() can do about 3100/s.
+
+  ta_mbwrap($text, $width, \%opts) => STR
     Like ta_wrap(), but it uses ta_mbswidth() instead of ta_length(), so it
     can handle wide characters.
 
-    Note: for text which does not have whitespaces between words, like
-    Chinese, you will have to separate the words first (e.g. using
-    Lingua::ZH::WordSegmenter). The module also currently does not handle
-    whitespace-like characters other than ASCII 32 (for example, the Chinese
-    dot 。).
+    Performance: ~650/s on my Core i5-2400 3.1GHz desktop for a ~1KB of text
+    (with zero to moderate amount of color codes). As a comparison,
+    Text::WideChar::Util's mbwrap() can do about 2300/s.
 
-    Note: currently performance is rather abysmal (~ 1000/s on my Core
-    i5-2400 3.1GHz desktop for a ~ 1KB of text), so call this routine
-    sparingly ;-).
+  ta_add_color_resets(@text) => LIST
+    Make sure that a color reset command (add "\e[0m]") to the end of each
+    element and a color restart (add all the color codes from the previous
+    element, from the last color reset) to the start of the next element,
+    and so on. Return the new list.
+
+    This makes each element safe to be combined with other array of text
+    into a single line, e.g. in a multicolumn/tabular layout. An example:
+
+    Without color resets:
+
+     my @col1 = split /\n/, "\e[31mred\nmerah\e[0m";
+     my @col2 = split /\n/, "\e[32mgreen\e[1m\nhijau tebal\e[0m";
+
+     printf "%s | %s\n", $col1[0], $col2[0];
+     printf "%s | %s\n", $col1[1], $col2[1];
+
+    the printed output:
+
+     \e[31mred | \e[32mgreen
+     merah\e[0m | \e[1mhijau tebal\e[0m
+
+    The "merah" text on the second line will become green because of the
+    effect of the last color command printed ("\e[32m"). However, with
+    ta_add_color_resets():
+
+     my @col1 = ta_add_color_resets(split /\n/, "\e[31mred\nmerah\e[0m");
+     my @col2 = ta_add_color_resets(split /\n/, "\e[32mgreen\e[1m\nhijau tebal\e[0m");
+
+     printf "%s | %s\n", $col1[0], $col2[0];
+     printf "%s | %s\n", $col1[1], $col2[1];
+
+    the printed output ("<...>") marks the code added by
+    ta_add_color_resets():
+
+     \e[31mred<\e[0m> | \e[32mgreen\e[1m<\e[0m>
+     <\e[31m>merah\e[0m | <\e[32m\e[1m>hijau tebal\e[0m
+
+    All the cells are printed with the intended colors.
 
   ta_pad($text, $width[, $which[, $padchar[, $truncate]]]) => STR
     Return $text padded with $padchar to $width columns. $which is either
@@ -186,23 +248,45 @@ FUNCTIONS
     Like ta_trunc() but it uses ta_mbswidth() instead of ta_length(), so it
     can handle wide characters.
 
-  ta_highlight($text, $needle, $color, $ci) => STR
+  ta_highlight($text, $needle, $color) => STR
     Highlight the first occurence of $needle in $text with <$color>, taking
     care not to mess up existing colors.
 
-    $ci can be set to 1 to search case-insensitively.
+    $needle can be a string or a Regexp object.
 
-  ta_highlight_all($text, $needle, $color, $ci) => STR
+    Performance: ~ 20k/s on my Core i5-2400 3.1GHz desktop for a ~ 1KB of
+    text and a needle of length ~ 7.
+
+    Implementation note: to not mess up colors, we save up all color codes
+    from the last reset ("\e[0m]") before inserting the highlight color +
+    highlight text. Then we issue "\e[0m" and the saved up color code to
+    return back to the color state before the highlight is inserted. This is
+    the same technique as described in ta_add_color_resets().
+
+  ta_highlight_all($text, $needle, $color) => STR
     Like ta_highlight(), but highlight all occurences instead of only the
     first.
 
+    Performance: ~ 4k/s on my Core i5-2400 3.1GHz desktop for a ~ 1KB of
+    text and a needle of length ~ 7 and number of occurences ~ 13.
+
 FAQ
   How do I truncate string based on number of characters?
-    You can simply use Perl's ta_trunc() even on text containing wide
-    characters. ta_trunc() uses Perl's length() which works on a
-    per-character basis.
+    You can simply use ta_trunc() even on text containing wide characters.
+    ta_trunc() uses Perl's length() which works on a per-character basis.
+
+  How do I highlight a string case-insensitively?
+    You can currently use a regex for the $needle and use the "i" modifier.
+    Example:
+
+     use Term::ANSIColor;
+     ta_highlight($text, qr/\b(foo)\b/i, color("bold red"));
 
 TODOS
+    *   ta_split
+
+        A generalized version of ta_split_lines().
+
 SEE ALSO
     Term::ANSIColor
 

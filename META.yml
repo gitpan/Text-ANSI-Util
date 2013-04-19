@@ -3,6 +3,7 @@ abstract: 'Routines for text containing ANSI escape codes'
 author:
   - 'Steven Haryanto <stevenharyanto@gmail.com>'
 build_requires:
+  Data::Dump: 0
   Module::Build: 0.3601
   Test::More: 0.98
 configure_requires:
@@ -16,9 +17,9 @@ meta-spec:
 name: Text-ANSI-Util
 requires:
   Text::CharWidth: 0
-  Text::WideChar::Util: 0.02
+  Text::WideChar::Util: 0.04
   perl: 5.010001
 resources:
   homepage: http://metacpan.org/release/Text-ANSI-Util
   repository: http://github.com/sharyanto/perl-Text-ANSI-Util
-version: 0.07
+version: 0.08
