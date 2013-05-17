@@ -33,7 +33,7 @@ our @EXPORT_OK = qw(
                        ta_wrap
                );
 
-our $VERSION = '0.08'; # VERSION
+our $VERSION = '0.09'; # VERSION
 
 # used to find/strip escape codes from string
 our $re       = qr/
@@ -84,7 +84,7 @@ sub ta_strip {
 sub ta_extract_codes {
     my $text = shift;
     my $res = "";
-    $res .= $1 while $text =~ /($re)/go;
+    $res .= $1 while $text =~ /((?:$re)+)/go;
     $res;
 }
 
@@ -116,16 +116,16 @@ sub _ta_wrap {
 
     # basically similar to Text::WideChar::Util's algorithm. we adjust for
     # dealing with ANSI codes by splitting codes first (to easily do color
-    # resets/restarts), then grouping into words and paras, then doing wrapping.
+    # resets/replays), then grouping into words and paras, then doing wrapping.
 
     my @termst; # store term type, 's' (spaces), 'w' (word), or 'p' (parabreak)
     my @terms;  # store the text (w/ codes), for ws only store the codes
     my @pterms; # store the plaintext ver, but only for ws to check parabreak
     my @termsw; # store width of each term, only for non-ws
-    my @termsc; # store color restart code
+    my @termsc; # store color replay code
     {
         my @ch = ta_split_codes_single($text);
-        my $crcode = ""; # code for color restart to be put at the start of line
+        my $crcode = ""; # code for color replay to be put at the start of line
         my $term     = '';
         my $pterm    = '';
         my $was_word = 0;
@@ -193,7 +193,7 @@ sub _ta_wrap {
                         if ($c eq "\e[0m") {
                             #say "D:found color reset, emptying crcode";
                             $crcode = "";
-                        } else {
+                        } elsif ($c =~ /m\z/) {
                             #say "D:adding to crcode";
                             $crcode .= $c;
                         }
@@ -344,7 +344,7 @@ sub _ta_wrap {
                     $j++;
                     # most words shouldn't be that long
                     if ($termw <= $width-$sliw) {
-                        push @words , $term;
+                        push @words , $c . $term;
                         push @wordsw, $termw;
                         last;
                     }
@@ -359,7 +359,7 @@ sub _ta_wrap {
                     } else {
                         # since ta_{,mb}trunc() adds the codes until the end of
                         # the word, to avoid messing colors, for the second word
-                        # and so on we need to restart colors by prefixing with:
+                        # and so on we need to replay colors by prefixing with:
                         # \e[0m (reset) + $crcode + (all the codes from the
                         # start of the long word up until the truncated
                         # position, stored in $c).
@@ -524,7 +524,7 @@ sub _ta_highlight {
         if (defined($c) && $c =~ /m\z/) {
             if ($c eq "\e[0m") {
                 $sc = "";
-            } else {
+            } elsif ($c =~ /m\z/) {
                 $sc .= $c;
             }
         }
@@ -671,7 +671,7 @@ sub ta_add_color_resets {
                 $newt .= $c;
                 if ($c eq "\e[0m") {
                     $savedc = "";
-                } else {
+                } elsif ($c =~ /m\z/) {
                     $savedc .= $c;
                 }
             }
@@ -697,7 +697,7 @@ Text::ANSI::Util - Routines for text containing ANSI escape codes
 
 =head1 VERSION
 
-version 0.08
+version 0.09
 
 =head1 SYNOPSIS
 
@@ -708,16 +708,16 @@ version 0.08
      ta_strip ta_wrap);
 
  # detect whether text has ANSI escape codes?
- say ta_detect("red");         # => false
+ say ta_detect("red");       # => false
  say ta_detect("\e[31mred"); # => true
 
  # calculate length of text (excluding the ANSI escape codes)
- say ta_length("red");         # => 3
+ say ta_length("red");       # => 3
  say ta_length("\e[31mred"); # => 3
 
  # calculate visual width of text if printed on terminal (can handle Unicode
  # wide characters and exclude the ANSI escape codes)
- say ta_mbswidth("\e[31mred"); # => 3
+ say ta_mbswidth("\e[31mred");  # => 3
  say ta_mbswidth("\e[31m红色"); # => 4
 
  # ditto, but also return the number of lines
@@ -735,7 +735,7 @@ version 0.08
  # ditto, but handle wide characters
  say ta_mbwrap(...);
 
- # pad (left, right, center) text to a certain width, handles multiple lines
+ # pad (left, right, center) text to a certain width
  say ta_pad("foo", 10);                          # => "foo       "
  say ta_pad("foo", 10, "left");                  # => "       foo"
  say ta_pad("foo\nbarbaz\n", 10, "center", "."); # => "...foo....\n..barbaz..\n"
@@ -746,7 +746,7 @@ version 0.08
  # truncate text to a certain width while still passing ANSI escape codes
  use Term::ANSIColor;
  my $text = color("red")."red text".color("reset"); # => "\e[31mred text\e[0m"
- say ta_trunc($text, 5);           # => "\e[31mred t\e[0m"
+ say ta_trunc($text, 5);                            # => "\e[31mred t\e[0m"
 
  # ditto, but handle wide characters
  say ta_mbtrunc(...);
@@ -780,6 +780,13 @@ is C<0xc2, 0x9b> (2 bytes).
 
 =item * Private-mode- and trailing-intermediate character currently not parsed
 
+=item * Only color reset code \e[0m is recognized
+
+For simplicity, currently multiple SGR (select graphic rendition) parameters
+inside a single ANSI escape code is not parsed. This means that color reset code
+like C<\e[1;0m> or C<\e[31;47;0m> is not recognized, only C<\e[0m> is. I believe
+this should not be a problem with most real-world text out there.
+
 =back
 
 =encoding utf8
@@ -792,8 +799,8 @@ Return true if C<$text> contains ANSI escape codes, false otherwise.
 
 =head2 ta_length($text) => INT
 
-Count the number of bytes in $text, while ignoring ANSI escape codes. Equivalent
-to C<< length(ta_strip($text) >>. See also: ta_mbswidth().
+Count the number of characters in $text, while ignoring ANSI escape codes.
+Equivalent to C<< length(ta_strip($text) >>. See also: ta_mbswidth().
 
 =head2 ta_length_height($text) => [INT, INT]
 
@@ -857,7 +864,7 @@ grouped together.
 =head2 ta_wrap($text, $width, \%opts) => STR
 
 Like L<Text::WideChar::Util>'s wrap() except handles ANSI escape codes. Perform
-color reset at the end of each line and a color restart at the start of
+color reset at the end of each line and a color replay at the start of
 subsequent line so the text is safe for combining in a multicolumn/tabular
 layout.
 
@@ -899,10 +906,9 @@ mbwrap() can do about 2300/s.
 
 =head2 ta_add_color_resets(@text) => LIST
 
-Make sure that a color reset command (add C<\e[0m]>) to the end of each element
-and a color restart (add all the color codes from the previous element, from the
-last color reset) to the start of the next element, and so on. Return the new
-list.
+Make sure that a color reset command (add C<\e[0m>) to the end of each element
+and a replay of all the color codes from the previous element, from the last
+color reset) to the start of the next element, and so on. Return the new list.
 
 This makes each element safe to be combined with other array of text into a
 single line, e.g. in a multicolumn/tabular layout. An example:
@@ -948,7 +954,7 @@ of 1 column.
 
 Does *not* handle multiline text; you can split text by C</\r?\n/> yourself.
 
-=head2 ta_mbpad => STR
+=head2 ta_mbpad($text, $width[, $which[, $padchar[, $truncate]]]) => STR
 
 Like ta_pad() but it uses ta_mbswidth() instead of ta_length(), so it can handle
 wide characters.
@@ -976,7 +982,7 @@ Performance: ~ 20k/s on my Core i5-2400 3.1GHz desktop for a ~ 1KB of text and a
 needle of length ~ 7.
 
 Implementation note: to not mess up colors, we save up all color codes from the
-last reset (C<\e[0m]>) before inserting the highlight color + highlight text.
+last reset (C<\e[0m>) before inserting the highlight color + highlight text.
 Then we issue C<\e[0m> and the saved up color code to return back to the color
 state before the highlight is inserted. This is the same technique as described
 in ta_add_color_resets().
@@ -1007,15 +1013,26 @@ Example:
 
 =over
 
-=item * ta_split
+=item * ta_split($re, $text)
 
-A generalized version of ta_split_lines().
+=item * ta_match($re, $text)
+
+Regex search.
+
+=item * ta_replace($re, $str, $text) (and ta_replace_all)
+
+Regex substitution.
 
 =back
 
 =head1 SEE ALSO
 
 L<Term::ANSIColor>
+
+L<Text::ANSITable> uses this module. In fact, this module was first created
+specifically for Text::ANSITable.
+
+http://en.wikipedia.org/wiki/ANSI_escape_code
 
 =head1 AUTHOR
 

@@ -2,7 +2,7 @@ NAME
     Text::ANSI::Util - Routines for text containing ANSI escape codes
 
 VERSION
-    version 0.08
+    version 0.09
 
 SYNOPSIS
      use Text::ANSI::Util qw(
@@ -12,16 +12,16 @@ SYNOPSIS
          ta_strip ta_wrap);
 
      # detect whether text has ANSI escape codes?
-     say ta_detect("red");         # => false
+     say ta_detect("red");       # => false
      say ta_detect("\e[31mred"); # => true
 
      # calculate length of text (excluding the ANSI escape codes)
-     say ta_length("red");         # => 3
+     say ta_length("red");       # => 3
      say ta_length("\e[31mred"); # => 3
 
      # calculate visual width of text if printed on terminal (can handle Unicode
      # wide characters and exclude the ANSI escape codes)
-     say ta_mbswidth("\e[31mred"); # => 3
+     say ta_mbswidth("\e[31mred");  # => 3
      say ta_mbswidth("\e[31mçº¢è²"); # => 4
 
      # ditto, but also return the number of lines
@@ -39,7 +39,7 @@ SYNOPSIS
      # ditto, but handle wide characters
      say ta_mbwrap(...);
 
-     # pad (left, right, center) text to a certain width, handles multiple lines
+     # pad (left, right, center) text to a certain width
      say ta_pad("foo", 10);                          # => "foo       "
      say ta_pad("foo", 10, "left");                  # => "       foo"
      say ta_pad("foo\nbarbaz\n", 10, "center", "."); # => "...foo....\n..barbaz..\n"
@@ -50,7 +50,7 @@ SYNOPSIS
      # truncate text to a certain width while still passing ANSI escape codes
      use Term::ANSIColor;
      my $text = color("red")."red text".color("reset"); # => "\e[31mred text\e[0m"
-     say ta_trunc($text, 5);           # => "\e[31mred t\e[0m"
+     say ta_trunc($text, 5);                            # => "\e[31mred t\e[0m"
 
      # ditto, but handle wide characters
      say ta_mbtrunc(...);
@@ -83,13 +83,21 @@ DESCRIPTION
     *   Private-mode- and trailing-intermediate character currently not
         parsed
 
+    *   Only color reset code \e[0m is recognized
+
+        For simplicity, currently multiple SGR (select graphic rendition)
+        parameters inside a single ANSI escape code is not parsed. This
+        means that color reset code like "\e[1;0m" or "\e[31;47;0m" is not
+        recognized, only "\e[0m" is. I believe this should not be a problem
+        with most real-world text out there.
+
 FUNCTIONS
   ta_detect($text) => BOOL
     Return true if $text contains ANSI escape codes, false otherwise.
 
   ta_length($text) => INT
-    Count the number of bytes in $text, while ignoring ANSI escape codes.
-    Equivalent to "length(ta_strip($text)". See also: ta_mbswidth().
+    Count the number of characters in $text, while ignoring ANSI escape
+    codes. Equivalent to "length(ta_strip($text)". See also: ta_mbswidth().
 
   ta_length_height($text) => [INT, INT]
     Like ta_length(), but also gives height (number of lines). For example,
@@ -146,7 +154,7 @@ FUNCTIONS
 
   ta_wrap($text, $width, \%opts) => STR
     Like Text::WideChar::Util's wrap() except handles ANSI escape codes.
-    Perform color reset at the end of each line and a color restart at the
+    Perform color reset at the end of each line and a color replay at the
     start of subsequent line so the text is safe for combining in a
     multicolumn/tabular layout.
 
@@ -182,10 +190,10 @@ FUNCTIONS
     Text::WideChar::Util's mbwrap() can do about 2300/s.
 
   ta_add_color_resets(@text) => LIST
-    Make sure that a color reset command (add "\e[0m]") to the end of each
-    element and a color restart (add all the color codes from the previous
-    element, from the last color reset) to the start of the next element,
-    and so on. Return the new list.
+    Make sure that a color reset command (add "\e[0m") to the end of each
+    element and a replay of all the color codes from the previous element,
+    from the last color reset) to the start of the next element, and so on.
+    Return the new list.
 
     This makes each element safe to be combined with other array of text
     into a single line, e.g. in a multicolumn/tabular layout. An example:
@@ -233,7 +241,7 @@ FUNCTIONS
     Does *not* handle multiline text; you can split text by "/\r?\n/"
     yourself.
 
-  ta_mbpad => STR
+  ta_mbpad($text, $width[, $which[, $padchar[, $truncate]]]) => STR
     Like ta_pad() but it uses ta_mbswidth() instead of ta_length(), so it
     can handle wide characters.
 
@@ -258,7 +266,7 @@ FUNCTIONS
     text and a needle of length ~ 7.
 
     Implementation note: to not mess up colors, we save up all color codes
-    from the last reset ("\e[0m]") before inserting the highlight color +
+    from the last reset ("\e[0m") before inserting the highlight color +
     highlight text. Then we issue "\e[0m" and the saved up color code to
     return back to the color state before the highlight is inserted. This is
     the same technique as described in ta_add_color_resets().
@@ -283,12 +291,23 @@ FAQ
      ta_highlight($text, qr/\b(foo)\b/i, color("bold red"));
 
 TODOS
-    *   ta_split
+    *   ta_split($re, $text)
 
-        A generalized version of ta_split_lines().
+    *   ta_match($re, $text)
+
+        Regex search.
+
+    *   ta_replace($re, $str, $text) (and ta_replace_all)
+
+        Regex substitution.
 
 SEE ALSO
     Term::ANSIColor
+
+    Text::ANSITable uses this module. In fact, this module was first created
+    specifically for Text::ANSITable.
+
+    http://en.wikipedia.org/wiki/ANSI_escape_code
 
 AUTHOR
     Steven Haryanto <stevenharyanto@gmail.com>
