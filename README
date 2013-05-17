@@ -2,7 +2,7 @@ NAME
     Text::ANSI::Util - Routines for text containing ANSI escape codes
 
 VERSION
-    version 0.09
+    version 0.10
 
 SYNOPSIS
      use Text::ANSI::Util qw(
@@ -176,6 +176,12 @@ FUNCTIONS
 
         If set to true, will pad each line to $width. This is convenient if
         you need the lines padded, saves calls to ta_pad().
+
+    *   return_stats => BOOL (default: 0)
+
+        If set to true, then instead of returning the wrapped string,
+        function will return "[$wrapped, $stats]" where $stats is a hash
+        containing some information like "max_word_width", "min_word_width".
 
     Performance: ~750/s on my Core i5-2400 3.1GHz desktop for a ~1KB of text
     (with zero to moderate amount of color codes). As a comparison,
