@@ -2,7 +2,7 @@ NAME
     Text::ANSI::Util - Routines for text containing ANSI escape codes
 
 VERSION
-    version 0.10
+    version 0.11
 
 SYNOPSIS
      use Text::ANSI::Util qw(
@@ -56,7 +56,7 @@ SYNOPSIS
      say ta_mbtrunc(...);
 
      # highlight the first occurence of some string within text
-     say ta_highlight("some text", "ome", "\x[7m\x[31m");
+     say ta_highlight("some text", "ome", "\e[7m\e[31m");
 
      # ditto, but highlight all occurrences
      say ta_highlight_all(...);
@@ -183,17 +183,17 @@ FUNCTIONS
         function will return "[$wrapped, $stats]" where $stats is a hash
         containing some information like "max_word_width", "min_word_width".
 
-    Performance: ~750/s on my Core i5-2400 3.1GHz desktop for a ~1KB of text
-    (with zero to moderate amount of color codes). As a comparison,
-    Text::WideChar::Util's wrap() can do about 3100/s.
+    Performance: ~500/s on my Core i5 1.7GHz laptop for a ~1KB of text (with
+    zero to moderate amount of color codes). As a comparison,
+    Text::WideChar::Util's wrap() can do about 2000/s.
 
   ta_mbwrap($text, $width, \%opts) => STR
     Like ta_wrap(), but it uses ta_mbswidth() instead of ta_length(), so it
     can handle wide characters.
 
-    Performance: ~650/s on my Core i5-2400 3.1GHz desktop for a ~1KB of text
-    (with zero to moderate amount of color codes). As a comparison,
-    Text::WideChar::Util's mbwrap() can do about 2300/s.
+    Performance: ~300/s on my Core i5 1.7GHz laptop for a ~1KB of text (with
+    zero to moderate amount of color codes). As a comparison,
+    Text::WideChar::Util's mbwrap() can do about 650/s.
 
   ta_add_color_resets(@text) => LIST
     Make sure that a color reset command (add "\e[0m") to the end of each
@@ -268,9 +268,6 @@ FUNCTIONS
 
     $needle can be a string or a Regexp object.
 
-    Performance: ~ 20k/s on my Core i5-2400 3.1GHz desktop for a ~ 1KB of
-    text and a needle of length ~ 7.
-
     Implementation note: to not mess up colors, we save up all color codes
     from the last reset ("\e[0m") before inserting the highlight color +
     highlight text. Then we issue "\e[0m" and the saved up color code to
@@ -280,9 +277,6 @@ FUNCTIONS
   ta_highlight_all($text, $needle, $color) => STR
     Like ta_highlight(), but highlight all occurences instead of only the
     first.
-
-    Performance: ~ 4k/s on my Core i5-2400 3.1GHz desktop for a ~ 1KB of
-    text and a needle of length ~ 7 and number of occurences ~ 13.
 
 FAQ
   How do I truncate string based on number of characters?

@@ -4,7 +4,7 @@
       "Steven Haryanto <stevenharyanto@gmail.com>"
    ],
    "dynamic_config" : 0,
-   "generated_by" : "Dist::Zilla version 4.300028, CPAN::Meta::Converter version 2.120921",
+   "generated_by" : "Dist::Zilla version 4.300035, CPAN::Meta::Converter version 2.132140",
    "license" : [
       "perl_5"
    ],
@@ -14,14 +14,9 @@
    },
    "name" : "Text-ANSI-Util",
    "prereqs" : {
-      "build" : {
-         "requires" : {
-            "Module::Build" : "0.3601"
-         }
-      },
       "configure" : {
          "requires" : {
-            "Module::Build" : "0.3601"
+            "ExtUtils::MakeMaker" : "6.30"
          }
       },
       "develop" : {
@@ -34,15 +29,16 @@
       },
       "runtime" : {
          "requires" : {
-            "Text::CharWidth" : "0",
-            "Text::WideChar::Util" : "0.04",
+            "Text::WideChar::Util" : "0.07",
             "perl" : "5.010001"
          }
       },
       "test" : {
          "requires" : {
+            "Capture::Tiny" : "0",
             "Data::Dump" : "0",
-            "Test::More" : "0.98"
+            "Test::More" : "0.98",
+            "blib" : "0"
          }
       }
    },
@@ -53,6 +49,6 @@
          "url" : "http://github.com/sharyanto/perl-Text-ANSI-Util"
       }
    },
-   "version" : "0.10"
+   "version" : "0.11"
 }
 
