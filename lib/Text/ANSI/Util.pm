@@ -32,7 +32,7 @@ our @EXPORT_OK = qw(
                        ta_wrap
                );
 
-our $VERSION = '0.11'; # VERSION
+our $VERSION = '0.12'; # VERSION
 
 # used to find/strip escape codes from string
 our $re       = qr/
@@ -703,13 +703,11 @@ __END__
 
 =pod
 
+=encoding utf-8
+
 =head1 NAME
 
 Text::ANSI::Util - Routines for text containing ANSI escape codes
-
-=head1 VERSION
-
-version 0.11
 
 =head1 SYNOPSIS
 
@@ -800,8 +798,6 @@ like C<\e[1;0m> or C<\e[31;47;0m> is not recognized, only C<\e[0m> is. I believe
 this should not be a problem with most real-world text out there.
 
 =back
-
-=encoding utf8
 
 =head1 FUNCTIONS
 
@@ -1045,6 +1041,23 @@ L<Text::ANSITable> uses this module. In fact, this module was first created
 specifically for Text::ANSITable.
 
 http://en.wikipedia.org/wiki/ANSI_escape_code
+
+=head1 HOMEPAGE
+
+Please visit the project's homepage at L<https://metacpan.org/release/Text-ANSI-Util>.
+
+=head1 SOURCE
+
+Source repository is at L<https://github.com/sharyanto/perl-Text-ANSI-Util>.
+
+=head1 BUGS
+
+Please report any bugs or feature requests on the bugtracker website
+http://rt.cpan.org/Public/Dist/Display.html?Name=Text-ANSI-Util
+
+When submitting a bug or request, please include a test-file or a
+patch to an existing test-file that illustrates the bug or desired
+feature.
 
 =head1 AUTHOR
 

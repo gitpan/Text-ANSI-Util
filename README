@@ -1,9 +1,6 @@
 NAME
     Text::ANSI::Util - Routines for text containing ANSI escape codes
 
-VERSION
-    version 0.11
-
 SYNOPSIS
      use Text::ANSI::Util qw(
          ta_add_color_resets
@@ -120,7 +117,7 @@ FUNCTIONS
 
   ta_mbswidth_height($text) => [INT, INT]
     Like ta_mbswidth(), but also gives height (number of lines). For
-    example, "ta_mbswidth_height("西爪哇\nb\n")" gives [6, 3].
+    example, "ta_mbswidth_height("è¥¿çªå\nb\n")" gives [6, 3].
 
   ta_strip($text) => STR
     Strip ANSI escape codes from $text, returning the stripped text.
@@ -308,6 +305,21 @@ SEE ALSO
     specifically for Text::ANSITable.
 
     http://en.wikipedia.org/wiki/ANSI_escape_code
+
+HOMEPAGE
+    Please visit the project's homepage at
+    <https://metacpan.org/release/Text-ANSI-Util>.
+
+SOURCE
+    Source repository is at
+    <https://github.com/sharyanto/perl-Text-ANSI-Util>.
+
+BUGS
+    Please report any bugs or feature requests on the bugtracker website
+    http://rt.cpan.org/Public/Dist/Display.html?Name=Text-ANSI-Util
+
+    When submitting a bug or request, please include a test-file or a patch
+    to an existing test-file that illustrates the bug or desired feature.
 
 AUTHOR
     Steven Haryanto <stevenharyanto@gmail.com>

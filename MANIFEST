@@ -14,3 +14,4 @@ t/02-chinese.t
 t/release-pod-coverage.t
 t/release-pod-syntax.t
 t/release-rinci.t
+weaver.ini

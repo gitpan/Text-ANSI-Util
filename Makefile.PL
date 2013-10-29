@@ -23,12 +23,13 @@ my %WriteMakefileArgs = (
     "Text::WideChar::Util" => "0.07"
   },
   "TEST_REQUIRES" => {
-    "Capture::Tiny" => 0,
     "Data::Dump" => 0,
-    "Test::More" => "0.98",
-    "blib" => 0
+    "File::Spec" => 0,
+    "IO::Handle" => 0,
+    "IPC::Open3" => 0,
+    "Test::More" => "0.98"
   },
-  "VERSION" => "0.11",
+  "VERSION" => "0.12",
   "test" => {
     "TESTS" => "t/*.t"
   }

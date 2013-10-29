@@ -4,7 +4,7 @@
       "Steven Haryanto <stevenharyanto@gmail.com>"
    ],
    "dynamic_config" : 0,
-   "generated_by" : "Dist::Zilla version 4.300035, CPAN::Meta::Converter version 2.132140",
+   "generated_by" : "Dist::Zilla version 4.300039, CPAN::Meta::Converter version 2.132140",
    "license" : [
       "perl_5"
    ],
@@ -35,20 +35,16 @@
       },
       "test" : {
          "requires" : {
-            "Capture::Tiny" : "0",
             "Data::Dump" : "0",
-            "Test::More" : "0.98",
-            "blib" : "0"
+            "File::Spec" : "0",
+            "IO::Handle" : "0",
+            "IPC::Open3" : "0",
+            "Test::More" : "0.98"
          }
       }
    },
    "release_status" : "stable",
-   "resources" : {
-      "homepage" : "http://metacpan.org/release/Text-ANSI-Util",
-      "repository" : {
-         "url" : "http://github.com/sharyanto/perl-Text-ANSI-Util"
-      }
-   },
-   "version" : "0.11"
+   "resources" : {},
+   "version" : "0.12"
 }
 
