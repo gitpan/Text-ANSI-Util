@@ -32,7 +32,7 @@ our @EXPORT_OK = qw(
                        ta_wrap
                );
 
-our $VERSION = '0.13'; # VERSION
+our $VERSION = '0.14'; # VERSION
 
 # used to find/strip escape codes from string
 our $re       = qr/
@@ -452,22 +452,32 @@ sub _ta_wrap {
                         $x += $wordw;
                     } else {
                         # line break
-                        if ($wordt eq 'c') {
-                            # a CJK word can be line-broken
-                            my $res = ta_mbtrunc($word, $width-$x, 1);
-                            push @res, $res->[0];
-                            #say "D:truncated CJK word: $word (".length($word)."), ".($width-$x)." -> $res->[0] (".length($res->[0]).") & $res->[1], remaining=$res->[3] (".length($res->[3]).")";
-                            $word = $res->[3];
-                            $wordw = _ta_mbswidth0($res->[3]);
-                        } else {
-                            push @res, "\e[0m" if $crcode;
+                        while (1) {
+                            if ($wordt eq 'c') {
+                                # a CJK word can be line-broken
+                                my $res = ta_mbtrunc($word, $width-$x, 1);
+                                push @res, $res->[0];
+                                #say "D:truncated CJK word: $word (".length($word)."), ".($width-$x)." -> $res->[0] (".length($res->[0]).") & $res->[1], remaining=$res->[3] (".length($res->[3]).")";
+                                $word = $res->[3];
+                                $wordw = _ta_mbswidth0($res->[3]);
+                            } else {
+                                push @res, "\e[0m" if $crcode;
+                            }
+                            push @res, " " x ($width-$x) if $pad;
+                            push @res, "\n";
+                            $y++;
+                            push @res, $crcode;
+                            push @res, $sli;
+
+                            if ($sliw + $wordw <= $width) {
+                                push @res, $word;
+                                $x = $sliw + $wordw;
+                                last;
+                            } else {
+                                # word still too long, break again
+                                $x = $sliw;
+                            }
                         }
-                        push @res, " " x ($width-$x) if $pad;
-                        push @res, "\n";
-                        push @res, $crcode;
-                        push @res, $sli, $word;
-                        $x = $sliw + $wordw;
-                        $y++;
                     }
                     $line_has_word++;
                 }
@@ -789,7 +799,7 @@ Text::ANSI::Util - Routines for text containing ANSI escape codes
 
 =head1 VERSION
 
-version 0.13
+version 0.14
 
 =head1 SYNOPSIS
 

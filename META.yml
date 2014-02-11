@@ -24,7 +24,7 @@ resources:
   bugtracker: https://rt.cpan.org/Public/Dist/Display.html?Name=Text-ANSI-Util
   homepage: https://metacpan.org/release/Text-ANSI-Util
   repository: git://github.com/sharyanto/perl-Text-ANSI-Util.git
-version: 0.13
+version: 0.14
 x_Dist_Zilla:
   perl:
     version: 5.018002

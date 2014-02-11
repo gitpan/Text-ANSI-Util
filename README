@@ -2,7 +2,7 @@ NAME
     Text::ANSI::Util - Routines for text containing ANSI escape codes
 
 VERSION
-    version 0.13
+    version 0.14
 
 SYNOPSIS
      use Text::ANSI::Util qw(
