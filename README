@@ -2,7 +2,7 @@ NAME
     Text::ANSI::Util - Routines for text containing ANSI escape codes
 
 VERSION
-    version 0.14
+    version 0.15
 
 SYNOPSIS
      use Text::ANSI::Util qw(
@@ -97,7 +97,7 @@ FUNCTIONS
 
   ta_length($text) => INT
     Count the number of characters in $text, while ignoring ANSI escape
-    codes. Equivalent to "length(ta_strip($text)". See also: ta_mbswidth().
+    codes. Equivalent to "length(ta_strip($text))". See also: ta_mbswidth().
 
   ta_length_height($text) => [INT, INT]
     Like ta_length(), but also gives height (number of lines). For example,
@@ -105,28 +105,25 @@ FUNCTIONS
 
   ta_mbswidth($text) => INT
     Return visual width of $text (in number of columns) if printed on
-    terminal. Equivalent to "Text::CharWidth::mbswidth(ta_strip($text))".
-    This function can be used e.g. in making sure that your text aligns
-    vertically when output to the terminal in tabular/table format.
+    terminal. Equivalent to
+    "Text::WideChar::Util::mbswidth(ta_strip($text))". This function can be
+    used e.g. in making sure that your text aligns vertically when output to
+    the terminal in tabular/table format.
 
-    Note: "mbswidth()" handles "\0" correctly (regard it as having zero
-    width) but currently does not handle control characters like "\n", "\t",
-    "\b", "\r", etc well (they are just counted as having -1). So make sure
-    that your text does not contain those characters.
-
-    But at least ta_mbswidth() handles multiline text correctly, e.g.:
+    Note that "ta_mbswidth()" handles multiline text correctly, e.g.:
     "ta_mbswidth("foo\nbarbaz")" gives 6 instead of 3-1+8 = 8. It splits the
     input text first against "/\r?\n/".
 
   ta_mbswidth_height($text) => [INT, INT]
-    Like ta_mbswidth(), but also gives height (number of lines). For
+    Like "ta_mbswidth()", but also gives height (number of lines). For
     example, "ta_mbswidth_height("西爪哇\nb\n")" gives [6, 3].
 
   ta_strip($text) => STR
     Strip ANSI escape codes from $text, returning the stripped text.
 
   ta_extract_codes($text) => STR
-    This is the opposite of ta_strip(), return only the ANSI codes in $text.
+    This is the opposite of "ta_strip()", return only the ANSI codes in
+    $text.
 
   ta_split_codes($text) => LIST
     Split $text to a list containing alternating ANSI escape codes and text.
@@ -149,8 +146,10 @@ FUNCTIONS
      }
 
   ta_split_codes_single($text) => LIST
-    Like ta_split_codes() but each ANSI escape code is split separately,
-    instead of grouped together.
+    Like "ta_split_codes()" but each ANSI escape code is split separately,
+    instead of grouped together. This routine is currently used internally
+    e.g. for "ta_mbwrap()" and "ta_highlight()" to trace color reset/replay
+    codes.
 
   ta_wrap($text, $width, \%opts) => STR
     Like Text::WideChar::Util's wrap() except handles ANSI escape codes.
