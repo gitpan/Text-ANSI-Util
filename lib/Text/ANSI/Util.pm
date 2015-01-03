@@ -32,7 +32,7 @@ our @EXPORT_OK = qw(
                        ta_wrap
                );
 
-our $VERSION = '0.15'; # VERSION
+our $VERSION = '0.16'; # VERSION
 
 # used to find/strip escape codes from string
 our $re       = qr/
@@ -805,7 +805,7 @@ Text::ANSI::Util - Routines for text containing ANSI escape codes
 
 =head1 VERSION
 
-version 0.15
+This document describes version 0.16 of Text::ANSI::Util (from Perl distribution Text-ANSI-Util), released on 2015-01-03.
 
 =head1 SYNOPSIS
 
@@ -1111,22 +1111,6 @@ Example:
  use Term::ANSIColor;
  ta_highlight($text, qr/\b(foo)\b/i, color("bold red"));
 
-=head1 TODOS
-
-=over
-
-=item * ta_split($re, $text)
-
-=item * ta_match($re, $text)
-
-Regex search.
-
-=item * ta_replace($re, $str, $text) (and ta_replace_all)
-
-Regex substitution.
-
-=back
-
 =head1 SEE ALSO
 
 L<Term::ANSIColor>
@@ -1154,11 +1138,11 @@ feature.
 
 =head1 AUTHOR
 
-Steven Haryanto <stevenharyanto@gmail.com>
+perlancar <perlancar@cpan.org>
 
 =head1 COPYRIGHT AND LICENSE
 
-This software is copyright (c) 2014 by Steven Haryanto.
+This software is copyright (c) 2015 by perlancar@cpan.org.
 
 This is free software; you can redistribute it and/or modify it under
 the same terms as the Perl 5 programming language system itself.
